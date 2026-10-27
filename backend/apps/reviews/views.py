@@ -6,7 +6,9 @@ from rest_framework.views import APIView
 
 from apps.bookings.permissions import IsCustomer
 from apps.common.exceptions import NotFound
-from apps.providers.permissions import IsAdminUser, IsProvider
+from apps.providers.permissions import (
+    ADMIN_AUTHENTICATION, IsAdminUser, IsProvider,
+)
 
 from . import selectors, services
 from .serializers import (
@@ -116,6 +118,7 @@ class CustomerRatingView(APIView):
 
 class HideReviewView(APIView):
     permission_classes = [IsAdminUser]
+    authentication_classes = ADMIN_AUTHENTICATION
 
     def post(self, request, review_id):
         serializer = HideReviewSerializer(data=request.data)
@@ -131,6 +134,7 @@ class HideReviewView(APIView):
 
 class UnhideReviewView(APIView):
     permission_classes = [IsAdminUser]
+    authentication_classes = ADMIN_AUTHENTICATION
 
     def post(self, request, review_id):
         review = services.unhide_review(

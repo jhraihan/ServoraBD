@@ -2,7 +2,7 @@ from rest_framework import serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.providers.permissions import IsAdminUser
+from apps.providers.permissions import ADMIN_AUTHENTICATION, IsAdminUser
 
 from . import selectors
 from .models import JobRun
@@ -34,6 +34,7 @@ class JobHealthSerializer(serializers.Serializer):
 
 class JobHealthView(APIView):
     permission_classes = [IsAdminUser]
+    authentication_classes = ADMIN_AUTHENTICATION
 
     def get(self, request):
         health = selectors.job_health()

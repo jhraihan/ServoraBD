@@ -5,7 +5,9 @@ from rest_framework.views import APIView
 
 from apps.accounts.models import ProviderProfile
 from apps.common.exceptions import NotFound
-from apps.providers.permissions import IsAdminUser, IsProvider
+from apps.providers.permissions import (
+    ADMIN_AUTHENTICATION, IsAdminUser, IsProvider,
+)
 
 from . import engine
 from .models import TrustSnapshot
@@ -40,6 +42,7 @@ class MyTrustHistoryView(ListAPIView):
 
 class TrustAuditView(ListAPIView):
     permission_classes = [IsAdminUser]
+    authentication_classes = ADMIN_AUTHENTICATION
     serializer_class = TrustAuditSerializer
 
     def get_queryset(self):
@@ -49,6 +52,7 @@ class TrustAuditView(ListAPIView):
 
 class RecomputeTrustView(APIView):
     permission_classes = [IsAdminUser]
+    authentication_classes = ADMIN_AUTHENTICATION
 
     def post(self, request, provider_id):
         snapshot = engine.recompute(

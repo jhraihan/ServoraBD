@@ -4,6 +4,7 @@ import pytest
 from django.urls import reverse
 from rest_framework.test import APIClient
 
+from apps.common.testing import verified_admin_client
 from apps.payments.models import LedgerEntry, Payment
 
 pytestmark = pytest.mark.django_db
@@ -38,7 +39,7 @@ def provider_client(provider_user):
 
 @pytest.fixture
 def admin_client(admin_user):
-    return _auth(admin_user, password="adminpass123")
+    return verified_admin_client(admin_user)
 
 
 def test_earnings_require_a_provider(anon, customer_client):

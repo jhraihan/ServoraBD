@@ -6,6 +6,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from rest_framework.test import APIClient
 
+from apps.common.testing import verified_admin_client
 from apps.providers import services
 from apps.providers.models import ProviderService, ServiceArea
 
@@ -38,7 +39,7 @@ def customer_client(customer_user):
 
 @pytest.fixture
 def admin_client(admin_user):
-    return _auth(admin_user, password="adminpass123")
+    return verified_admin_client(admin_user)
 
 
 def test_provider_detail_is_public(anon, provider):
@@ -321,7 +322,7 @@ def test_admin_document_page_renders(admin_user, provider, client):
         provider_id=provider.id, document_type="nid_front",
         file=_fake_file(),
     )
-    client.force_login(admin_user)
+    verified_admin_client(admin_user, client)
     resp = client.get(
         "/admin/providers/verificationdocument/%d/change/" % doc.id)
     assert resp.status_code == 200

@@ -2,7 +2,11 @@ import pytest
 from django.contrib import admin
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import RequestFactory
+from django.urls import reverse
 
+from apps.common.testing import (
+    admin_session, assert_change_page_and_dialogs_render, post_action,
+)
 from apps.providers import services
 from apps.providers.models import VerificationDocument
 
@@ -67,3 +71,36 @@ def test_a_reviewed_document_is_locked_in_the_admin(
 
     readonly = model_admin.get_readonly_fields(_request(admin_user), document)
     assert {"status", "rejection_reason", "provider"} <= set(readonly)
+
+
+def test_approve_action_verifies_the_document(
+        admin_user, document, django_capture_on_commit_callbacks):
+    client = admin_session(admin_user)
+    assert_change_page_and_dialogs_render(client, document,
+                                          ["approve", "reject"])
+
+    with django_capture_on_commit_callbacks(execute=True):
+        post_action(client, "providers_verificationdocument_approve",
+                    document)
+
+    document.refresh_from_db()
+    assert document.status == VerificationDocument.Status.APPROVED
+    assert document.reviewed_by == admin_user
+
+
+def test_reject_action_records_the_reason(admin_user, document):
+    post_action(admin_session(admin_user),
+                "providers_verificationdocument_reject", document,
+                reason="Photo is blurred; NID number unreadable.")
+
+    document.refresh_from_db()
+    assert document.status == VerificationDocument.Status.REJECTED
+    assert document.rejection_reason.startswith("Photo is blurred")
+
+
+def test_document_link_opens_for_a_verified_admin_session(admin_user,
+                                                          document):
+    resp = admin_session(admin_user).get(
+        reverse("providers:verification-file", args=[document.pk]))
+    assert resp.status_code == 200
+    assert resp["Content-Security-Policy"] == "default-src 'none'; sandbox"

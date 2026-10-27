@@ -1,9 +1,10 @@
 from django.contrib import admin
+from unfold.admin import ModelAdmin
 
 from .models import TrustSnapshot
 
 @admin.register(TrustSnapshot)
-class TrustSnapshotAdmin(admin.ModelAdmin):
+class TrustSnapshotAdmin(ModelAdmin):
     list_display = ["provider", "score", "tier", "trigger", "algo_version",
                     "created_at"]
     list_filter = ["tier", "trigger", "algo_version"]

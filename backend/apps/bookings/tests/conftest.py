@@ -96,3 +96,10 @@ def future_window():
 def gulshan_free(dhaka):
     return Location.objects.create(name="Gulshan",
                                    level=Location.Level.THANA, parent=dhaka)
+
+
+@pytest.fixture
+def admin_user(db):
+    return User.objects.create_superuser(
+        phone="+8801612345678", password="adminpass123",
+    )

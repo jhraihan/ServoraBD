@@ -14,7 +14,7 @@ from rest_framework.views import APIView
 from apps.common.exceptions import NotFound
 
 from . import search, selectors, services
-from .permissions import IsAdminUser, IsProvider
+from .permissions import ADMIN_AUTHENTICATION, IsAdminUser, IsProvider
 from .serializers import (
     AcceptingWorkSerializer, AvailabilityExceptionSerializer,
     AvailabilitySerializer, ProviderProfileWriteSerializer,
@@ -276,6 +276,7 @@ class MyWorkPhotoDetailView(APIView):
 
 class VerificationQueueView(ListAPIView):
     permission_classes = [IsAdminUser]
+    authentication_classes = ADMIN_AUTHENTICATION
     serializer_class = VerificationQueueSerializer
 
     def get_queryset(self):
@@ -284,6 +285,7 @@ class VerificationQueueView(ListAPIView):
 
 class VerificationFileView(APIView):
     permission_classes = [IsAdminUser]
+    authentication_classes = ADMIN_AUTHENTICATION
 
     def get(self, request, document_id):
         document = selectors.verification_document(document_id)
@@ -303,6 +305,7 @@ class VerificationFileView(APIView):
 
 class VerificationDecisionView(APIView):
     permission_classes = [IsAdminUser]
+    authentication_classes = ADMIN_AUTHENTICATION
 
     def post(self, request, document_id):
         serializer = VerificationDecisionSerializer(data=request.data)

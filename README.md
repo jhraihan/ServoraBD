@@ -169,7 +169,7 @@ The site runs on Render's free tier, as a static site and an API service
 created by hand after the blueprint was rejected twice. What that costs is
 worth knowing before you visit: no SMTP is configured, so login codes cannot
 be sent and **nobody can register or sign in** — browsing works, and the
-admin account is password-based and unaffected. The free plan also allows no
+admin, which signs in with a password and an authenticator app, is unaffected. The free plan also allows no
 cron services, so the seven scheduled jobs (booking expiry, review reveal,
 trust recompute) only run when invoked by hand; uploads do not survive a
 deploy; and the service sleeps after fifteen minutes, making the first

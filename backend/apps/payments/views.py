@@ -11,7 +11,9 @@ from apps.bookings import selectors as booking_selectors
 from apps.bookings import services as booking_services
 from apps.bookings.models import Booking
 from apps.bookings.serializers import BookingSerializer
-from apps.providers.permissions import IsAdminUser, IsProvider
+from apps.providers.permissions import (
+    ADMIN_AUTHENTICATION, IsAdminUser, IsProvider,
+)
 
 from . import selectors, services
 from .serializers import (
@@ -150,6 +152,7 @@ class ProviderDashboardView(APIView):
 
 class FlaggedPaymentListView(ListAPIView):
     permission_classes = [IsAdminUser]
+    authentication_classes = ADMIN_AUTHENTICATION
     serializer_class = AdminPaymentSerializer
 
     def get_queryset(self):
@@ -158,6 +161,7 @@ class FlaggedPaymentListView(ListAPIView):
 
 class ResolvePaymentView(APIView):
     permission_classes = [IsAdminUser]
+    authentication_classes = ADMIN_AUTHENTICATION
 
     def post(self, request, payment_id):
         serializer = ResolvePaymentSerializer(data=request.data)
@@ -174,6 +178,7 @@ class ResolvePaymentView(APIView):
 
 class ProviderSettlementView(APIView):
     permission_classes = [IsAdminUser]
+    authentication_classes = ADMIN_AUTHENTICATION
 
     def post(self, request, provider_id):
         serializer = SettlementSerializer(data=request.data)

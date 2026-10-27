@@ -5,8 +5,13 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
+from rest_framework_simplejwt.token_blacklist.models import (
+    BlacklistedToken, OutstandingToken,
+)
 
-from apps.common.exceptions import DomainError, RateLimited, VerificationError
+from apps.common.exceptions import (
+    DomainError, NotFound, RateLimited, VerificationError,
+)
 
 from .models import CustomerProfile, PhoneOTP, ProviderProfile
 from .validators import normalise_bd_phone
@@ -72,6 +77,51 @@ def switch_active_role(*, user_id, role):
     user.save(update_fields=["active_role", "updated_at"]
               if hasattr(user, "updated_at") else ["active_role"])
     return user
+
+@transaction.atomic
+def suspend_user(*, user_id, admin_user_id, reason):
+    reason = (reason or "").strip()
+    if not reason:
+        raise DomainError("A suspension needs a reason.",
+                          code="reason_required")
+    if user_id == admin_user_id:
+        raise DomainError("You cannot suspend your own account.",
+                          code="self_suspension")
+
+    user = User.objects.select_for_update().filter(pk=user_id).first()
+    if user is None:
+        raise NotFound("No such user.", code="user_not_found")
+
+    user.suspended_at = timezone.now()
+    user.suspension_reason = reason
+    user.save(update_fields=["suspended_at", "suspension_reason"])
+    revoked = revoke_refresh_tokens(user_id=user.pk)
+    logger.info("User %s suspended by %s; %d refresh token(s) revoked",
+                user.pk, admin_user_id, revoked)
+    return user
+
+@transaction.atomic
+def unsuspend_user(*, user_id, admin_user_id):
+    user = User.objects.select_for_update().filter(pk=user_id).first()
+    if user is None:
+        raise NotFound("No such user.", code="user_not_found")
+
+    user.suspended_at = None
+    user.suspension_reason = ""
+    user.save(update_fields=["suspended_at", "suspension_reason"])
+    logger.info("User %s reinstated by %s", user.pk, admin_user_id)
+    return user
+
+def revoke_refresh_tokens(*, user_id):
+    live = OutstandingToken.objects.filter(
+        user_id=user_id, expires_at__gt=timezone.now(),
+        blacklistedtoken__isnull=True,
+    )
+    revoked = BlacklistedToken.objects.bulk_create(
+        [BlacklistedToken(token=token) for token in live],
+        ignore_conflicts=True,
+    )
+    return len(revoked)
 
 def _recent_send_count(phone, within=timedelta(hours=1)):
     return PhoneOTP.objects.filter(

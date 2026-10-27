@@ -1,7 +1,12 @@
 from django import forms
 from django.contrib import admin
+from django.shortcuts import get_object_or_404
 from django.urls import reverse
 from django.utils.html import format_html
+from unfold.admin import ModelAdmin
+from unfold.decorators import action
+
+from apps.common.admin_actions import ConfirmForm, ReasonForm, perform
 
 from . import services
 from .models import (
@@ -19,38 +24,39 @@ class VerificationDecisionForm(forms.ModelForm):
         return cleaned
 
 @admin.register(ProviderService)
-class ProviderServiceAdmin(admin.ModelAdmin):
+class ProviderServiceAdmin(ModelAdmin):
     list_display = ["provider", "service", "price", "is_active"]
     list_filter = ["is_active", "service__category"]
     search_fields = ["provider__display_name", "service__name"]
     autocomplete_fields = ["service"]
 
 @admin.register(ServiceArea)
-class ServiceAreaAdmin(admin.ModelAdmin):
+class ServiceAreaAdmin(ModelAdmin):
     list_display = ["provider", "location", "travel_surcharge"]
     search_fields = ["provider__display_name", "location__name"]
     autocomplete_fields = ["location"]
 
 @admin.register(Availability)
-class AvailabilityAdmin(admin.ModelAdmin):
+class AvailabilityAdmin(ModelAdmin):
     list_display = ["provider", "weekday", "start_time", "end_time"]
     list_filter = ["weekday"]
     search_fields = ["provider__display_name"]
 
 @admin.register(AvailabilityException)
-class AvailabilityExceptionAdmin(admin.ModelAdmin):
+class AvailabilityExceptionAdmin(ModelAdmin):
     list_display = ["provider", "date", "is_available", "reason"]
     list_filter = ["is_available"]
     search_fields = ["provider__display_name"]
 
 @admin.register(VerificationDocument)
-class VerificationDocumentAdmin(admin.ModelAdmin):
+class VerificationDocumentAdmin(ModelAdmin):
     list_display = ["provider", "document_type", "status", "created_at",
                     "reviewed_at"]
     list_filter = ["status", "document_type"]
     search_fields = ["provider__display_name"]
     form = VerificationDecisionForm
     exclude = ["file"]
+    actions_detail = ["approve", "reject"]
 
     def get_readonly_fields(self, request, obj=None):
         fields = ["document", "provider", "document_type", "created_at",
@@ -83,7 +89,43 @@ class VerificationDocumentAdmin(admin.ModelAdmin):
             obj.file_basename,
         )
 
+    @action(description="Approve", url_path="approve", icon="check_circle",
+            permissions=["change"],
+            dialog={"title": "Approve this document",
+                    "description": "Marks the provider verified for this "
+                                   "document type and updates their trust "
+                                   "score.",
+                    "form_class": ConfirmForm,
+                    "form_submit_text": "Approve"})
+    def approve(self, request, form, object_id):
+        document = get_object_or_404(VerificationDocument, pk=object_id)
+        return perform(
+            self, request, document,
+            lambda: services.decide_verification(
+                document_id=document.pk, reviewer_id=request.user.pk,
+                approve=True),
+            "Approved.",
+        )
+
+    @action(description="Reject", url_path="reject", icon="cancel",
+            permissions=["change"],
+            dialog={"title": "Reject this document",
+                    "description": "The provider sees your reason and can "
+                                   "upload a new document.",
+                    "form_class": ReasonForm,
+                    "form_submit_text": "Reject"})
+    def reject(self, request, form, object_id):
+        document = get_object_or_404(VerificationDocument, pk=object_id)
+        reason = form.cleaned_data["reason"]
+        return perform(
+            self, request, document,
+            lambda: services.decide_verification(
+                document_id=document.pk, reviewer_id=request.user.pk,
+                approve=False, rejection_reason=reason),
+            "Rejected: %s" % reason,
+        )
+
 @admin.register(WorkPhoto)
-class WorkPhotoAdmin(admin.ModelAdmin):
+class WorkPhotoAdmin(ModelAdmin):
     list_display = ["provider", "caption", "display_order"]
     search_fields = ["provider__display_name"]

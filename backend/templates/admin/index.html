@@ -1,0 +1,40 @@
+{% extends 'admin/base.html' %}
+
+{% load i18n unfold %}
+
+{% block title %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block branding %}
+    {% include "unfold/helpers/site_branding.html" %}
+{% endblock %}
+
+{% block content %}
+    <div class="flex flex-col gap-8">
+        {% if kpis %}
+            <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+                {% for kpi in kpis %}
+                    {% component "unfold/components/card.html" with href=kpi.link footer=kpi.footer %}
+                        {% component "unfold/components/text.html" %}{{ kpi.title }}{% endcomponent %}
+                        {% component "unfold/components/title.html" %}{{ kpi.value }}{% endcomponent %}
+                    {% endcomponent %}
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        {% if queues %}
+            <div class="grid gap-6 lg:grid-cols-2">
+                {% for queue in queues %}
+                    {% component "unfold/components/card.html" with title=queue.title href=queue.link %}
+                        {% if queue.rows %}
+                            {% component "unfold/components/table.html" with table=queue card_included=1 striped=1 %}{% endcomponent %}
+                        {% else %}
+                            {% component "unfold/components/text.html" %}Nothing waiting.{% endcomponent %}
+                        {% endif %}
+                    {% endcomponent %}
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        {% include "unfold/helpers/dashboard_default.html" %}
+    </div>
+{% endblock %}

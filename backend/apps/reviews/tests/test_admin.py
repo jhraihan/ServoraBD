@@ -2,6 +2,9 @@ import pytest
 from django.contrib import admin
 from django.test import RequestFactory
 
+from apps.common.testing import (
+    admin_session, assert_change_page_and_dialogs_render, post_action,
+)
 from apps.reviews import services
 from apps.reviews.models import Review
 
@@ -53,3 +56,26 @@ def test_review_content_is_read_only_in_the_admin(admin_user, review):
     readonly = model_admin.get_readonly_fields(request, review)
     assert {"rating", "comment", "customer"} <= set(readonly)
     assert "is_hidden" not in readonly
+
+
+def test_hide_action_records_who_and_why(admin_user, review):
+    client = admin_session(admin_user)
+    assert_change_page_and_dialogs_render(client, review, ["hide", "unhide"])
+
+    post_action(client, "reviews_review_hide", review,
+                reason="Contains a phone number.")
+
+    review.refresh_from_db()
+    assert review.is_hidden is True
+    assert review.hidden_by == admin_user
+    assert review.hidden_reason == "Contains a phone number."
+
+
+def test_unhide_action(admin_user, review):
+    services.hide_review(review_id=review.pk, admin_user_id=admin_user.pk,
+                         reason="Mistake")
+
+    post_action(admin_session(admin_user), "reviews_review_unhide", review)
+
+    review.refresh_from_db()
+    assert review.is_hidden is False

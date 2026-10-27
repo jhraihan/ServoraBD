@@ -3,6 +3,7 @@ from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from apps.common.testing import verified_admin_client
 from apps.reviews import services
 from apps.reviews.models import Review
 
@@ -38,7 +39,7 @@ def provider_client(provider_user):
 
 @pytest.fixture
 def admin_client(admin_user):
-    return _auth(admin_user, password="adminpass123")
+    return verified_admin_client(admin_user)
 
 
 def test_review_creation_requires_customer(anon, provider_client,

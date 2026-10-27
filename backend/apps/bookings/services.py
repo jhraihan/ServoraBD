@@ -413,6 +413,62 @@ def open_dispute(*, booking_id, customer_id, reason):
     )
 
 
+@transaction.atomic
+def resolve_dispute(*, booking_id, admin_user_id, note, settled_price=None):
+    from apps.payments.models import Payment
+    from apps.payments.services import resolve_flagged_payment
+
+    booking = _locked_booking(booking_id)
+
+    if booking.state != State.DISPUTED:
+        raise DomainError("Only a disputed booking can be resolved.",
+                          code="booking_not_disputed",
+                          details={"state": booking.state})
+
+    note = (note or "").strip()
+    if not note:
+        raise DomainError("A resolution needs a note.", code="note_required")
+
+    first_completion = booking.confirmed_at is None
+    if first_completion and settled_price is None:
+        raise DomainError(
+            "This booking was never confirmed, so set the price the "
+            "customer pays.",
+            code="price_required",
+        )
+    if settled_price is not None and settled_price < 0:
+        raise DomainError("Price cannot be negative.", code="invalid_price")
+
+    updates = {}
+    if first_completion:
+        updates = {"confirmed_at": timezone.now(),
+                   "customer_confirmed_price": settled_price}
+
+    booking = _transition(
+        booking, to_state=State.COMPLETED,
+        actor=BookingEvent.Actor.ADMIN,
+        actor_user_id=admin_user_id,
+        reason=note,
+        metadata=({"settled_price": str(settled_price)}
+                  if settled_price is not None else {}),
+        updates=updates,
+    )
+
+    if first_completion:
+        _on_completed(booking)
+        flagged = Payment.objects.filter(
+            booking=booking, status=Payment.Status.FLAGGED,
+        ).first()
+        if flagged is not None:
+            resolve_flagged_payment(payment_id=flagged.pk,
+                                    admin_user_id=admin_user_id,
+                                    settled_amount=settled_price, note=note)
+
+    logger.info("Dispute on booking %s resolved by %s", booking.pk,
+                admin_user_id)
+    return booking
+
+
 def _recompute_trust(provider_id, trigger):
     from apps.trust import engine
     from apps.trust.models import TrustSnapshot

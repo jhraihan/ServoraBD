@@ -30,7 +30,8 @@ ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 
 
 DJANGO_APPS = [
-    "apps.common.admin_site.ServoraAdminConfig",
+    "unfold.apps.BasicAppConfig",
+    "apps.common.admin_apps.ServoraAdminConfig",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -43,6 +44,8 @@ THIRD_PARTY_APPS = [
     "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
     "django_filters",
+    "django_otp",
+    "django_otp.plugins.otp_totp",
 ]
 
 LOCAL_APPS = [
@@ -68,6 +71,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django_otp.middleware.OTPMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -185,6 +189,25 @@ PLATFORM_COMMISSION_PERCENT = env("PLATFORM_COMMISSION_PERCENT")
 TRUST_ALGO_VERSION = env("TRUST_ALGO_VERSION")
 
 CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
+
+SESSION_COOKIE_AGE = 8 * 60 * 60
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+
+OTP_TOTP_ISSUER = "ServoraBD"
+
+UNFOLD = {
+    "SITE_TITLE": "ServoraBD admin",
+    "SITE_HEADER": "ServoraBD",
+    "SITE_SUBHEADER": "Operations",
+    "SITE_SYMBOL": "handyman",
+    "SHOW_VIEW_ON_SITE": False,
+    "DASHBOARD_CALLBACK": "apps.common.dashboard.dashboard_callback",
+    "SIDEBAR": {
+        "show_search": True,
+        "show_all_applications": True,
+        "navigation": "apps.common.dashboard.sidebar_navigation",
+    },
+}
 
 EXPOSE_CLIENT_IDENT = env("EXPOSE_CLIENT_IDENT")
 

@@ -1,10 +1,11 @@
 from django.contrib import admin
+from unfold.admin import ModelAdmin
 
 from .models import JobRun
 
 
 @admin.register(JobRun)
-class JobRunAdmin(admin.ModelAdmin):
+class JobRunAdmin(ModelAdmin):
     list_display = ["job", "status", "started_at", "duration_seconds",
                     "rows_affected", "message"]
     list_filter = ["job", "status"]

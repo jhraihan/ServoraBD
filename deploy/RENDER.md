@@ -205,6 +205,57 @@ lower `TRUSTED_PROXY_COUNT` and try again.
 **Set `EXPOSE_CLIENT_IDENT` back to `False` when you are done.** It is off by
 default and should stay off; it exists only for this check.
 
+## The admin panel
+
+Open `https://servorabd-api.onrender.com/admin/`. The same path on the web
+domain also works through the rewrite, but if it loads unstyled or its menus do
+not open there, the static site's Content-Security-Policy is reaching the
+admin. Use the API address, which sends no such header.
+
+**Every staff account signs in with a password and an authenticator app.** The
+first time someone signs in, the admin shows a QR code. They scan it with
+Google Authenticator, Microsoft Authenticator or any TOTP app and type the
+6-digit code. Every later sign-in asks for a fresh code.
+
+Enrol your own superuser straight after the first deploy that includes this.
+Until a staff account has enrolled, anyone who knows its password can enrol
+their own phone in its place.
+
+**Lost phone.** A superuser opens **Users**, picks the staff member and presses
+**Reset two-factor**. They set up a new app at their next sign-in. Keep a
+second superuser with its own app, so that one lost phone never locks the
+platform out. If the last superuser is locked out, run this in
+**servorabd-api > Shell** (paid plans only):
+
+```bash
+python manage.py shell -c "from django_otp.plugins.otp_totp.models import TOTPDevice; TOTPDevice.objects.filter(user__phone='+8801XXXXXXXXX').delete()"
+```
+
+**Staff roles.** Every deploy creates or refreshes four groups:
+
+| Group | Can do |
+|---|---|
+| Support | View users, bookings and payments; suspend and reinstate users; resolve disputes |
+| Moderator | Approve or reject verification documents; hide reviews; recompute trust |
+| Finance | Resolve flagged payments; record settlements; view the ledger |
+| Catalogue editor | Add and edit categories, services and locations |
+
+To add a staff member, create the user, tick **Staff status** and add them to
+one group. The groups are defined in `backend/apps/common/roles.py`. Changes
+made to these four in the admin are overwritten on the next deploy, so create
+a new group for anything bespoke. Only superusers can change groups or grant
+permissions.
+
+**Actions, not edits.** Payments, the ledger, bookings and their history are
+read-only. Change them with the buttons at the top of a record: Suspend,
+Reinstate, Reset two-factor, Approve, Reject, Hide, Show again, Resolve dispute,
+Resolve flagged payment, Record settlement, Recompute trust. Each asks for
+confirmation or a reason, and is recorded under **Admin activity**.
+
+The JSON endpoints under `/api/v1/admin/` accept only a signed-in admin session
+that has passed two-factor. A staff member's app token is refused, so a stolen
+password alone cannot reach them.
+
 ## Updating
 
 Push to `main`. Render rebuilds and runs the migrations. If a build fails, the

@@ -466,3 +466,86 @@ def test_dispute_from_completed(customer, provider, service, dhanmondi,
                                     customer_id=customer.id,
                                     reason="Fault came back")
     assert booking.state == State.DISPUTED
+
+
+def _disputed(customer, provider, service, location, future_window, *,
+              final_price=None, confirm_first=False):
+    booking = _booked(customer, provider, service, location, future_window)
+    services.start_job(booking_id=booking.id, provider_id=provider.id)
+    services.complete_job(booking_id=booking.id, provider_id=provider.id,
+                          final_price=final_price)
+    if confirm_first:
+        services.confirm_completion(booking_id=booking.id,
+                                    customer_id=customer.id)
+    return services.open_dispute(booking_id=booking.id,
+                                 customer_id=customer.id,
+                                 reason="The AC still does not cool.")
+
+
+def test_resolving_an_unconfirmed_dispute_settles_at_the_decided_price(
+        customer, provider, service, dhanmondi, future_window,
+        admin_user):
+    from apps.payments.models import Payment
+
+    booking = _disputed(customer, provider, service, dhanmondi,
+                        future_window, final_price=Decimal("2500"))
+
+    booking = services.resolve_dispute(
+        booking_id=booking.id, admin_user_id=admin_user.id,
+        note="Gas refill was skipped; customer pays the agreed price.",
+        settled_price=Decimal("1800"),
+    )
+
+    assert booking.state == State.COMPLETED
+    assert booking.customer_confirmed_price == Decimal("1800")
+    payment = Payment.objects.get(booking=booking)
+    assert payment.status == Payment.Status.SETTLED
+    assert payment.settled_amount == Decimal("1800")
+    provider.refresh_from_db()
+    assert provider.jobs_completed == 1
+    assert booking.events.last().actor == BookingEvent.Actor.ADMIN
+
+
+def test_resolving_after_confirmation_keeps_the_recorded_payment(
+        customer, provider, service, dhanmondi, future_window,
+        admin_user):
+    from apps.payments.models import Payment
+
+    booking = _disputed(customer, provider, service, dhanmondi,
+                        future_window, confirm_first=True)
+
+    booking = services.resolve_dispute(
+        booking_id=booking.id, admin_user_id=admin_user.id,
+        note="Provider returned and fixed it.",
+    )
+
+    assert booking.state == State.COMPLETED
+    assert Payment.objects.filter(booking=booking).count() == 1
+    provider.refresh_from_db()
+    assert provider.jobs_completed == 1
+
+
+def test_an_unconfirmed_dispute_needs_a_price(customer, provider, service,
+                                              dhanmondi, future_window,
+                                              admin_user):
+    booking = _disputed(customer, provider, service, dhanmondi,
+                        future_window)
+
+    with pytest.raises(DomainError) as exc:
+        services.resolve_dispute(booking_id=booking.id,
+                                 admin_user_id=admin_user.id,
+                                 note="Split the difference.")
+    assert exc.value.code == "price_required"
+
+
+def test_only_a_disputed_booking_can_be_resolved(customer, provider, service,
+                                                 dhanmondi, future_window,
+                                                 admin_user):
+    booking = _booked(customer, provider, service, dhanmondi, future_window)
+
+    with pytest.raises(DomainError) as exc:
+        services.resolve_dispute(booking_id=booking.id,
+                                 admin_user_id=admin_user.id,
+                                 note="Nothing to resolve.",
+                                 settled_price=Decimal("0"))
+    assert exc.value.code == "booking_not_disputed"

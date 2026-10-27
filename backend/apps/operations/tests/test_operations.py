@@ -10,6 +10,7 @@ from rest_framework.test import APIClient
 
 from apps.accounts import services as account_services
 from apps.accounts.models import User
+from apps.common.testing import verified_admin_client
 from apps.operations import selectors
 from apps.operations.jobs import SCHEDULE, get_job
 from apps.operations.models import JobRun
@@ -188,15 +189,11 @@ def test_job_health_endpoint_is_admin_only(db):
 
 
 def test_job_health_endpoint_reports_every_job(db):
-    User.objects.create_superuser(phone="+8801611112222",
-                                  password="adminpass123")
+    admin_user = User.objects.create_superuser(phone="+8801611112222",
+                                               password="adminpass123")
     _run("expire_requests", minutes_ago=5)
 
-    client = APIClient()
-    token = client.post(reverse("accounts:login"),
-                        {"phone": "+8801611112222", "password": "adminpass123"},
-                        format="json").data["access"]
-    client.credentials(HTTP_AUTHORIZATION="Bearer %s" % token)
+    client = verified_admin_client(admin_user)
     resp = client.get(reverse("operations:job-health"))
 
     assert resp.status_code == 200

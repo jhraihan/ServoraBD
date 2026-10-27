@@ -4,6 +4,7 @@ from rest_framework.test import APIClient
 
 from apps.accounts import services as account_services
 from apps.accounts.models import User
+from apps.common.testing import verified_admin_client
 from apps.trust import engine
 from apps.trust.models import TrustSnapshot
 
@@ -115,7 +116,7 @@ def test_audit_requires_admin(provider_user, provider):
 def test_admin_audit_exposes_factor_inputs(admin_user, provider):
     engine.recompute(provider.id)
 
-    client = _auth(admin_user, password="adminpass123")
+    client = verified_admin_client(admin_user)
     resp = client.get(reverse("trust:trust-audit", args=[provider.id]))
 
     assert resp.status_code == 200
@@ -132,7 +133,7 @@ def test_provider_history_hides_factor_inputs(provider_user, provider):
 
 
 def test_admin_can_force_recompute(admin_user, provider):
-    client = _auth(admin_user, password="adminpass123")
+    client = verified_admin_client(admin_user)
     resp = client.post(
         reverse("trust:trust-recompute", args=[provider.id])
     )
