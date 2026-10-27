@@ -482,7 +482,8 @@ def auto_confirm_bookings(*, now=None):
                 updates={
                     "confirmed_at": timezone.now(),
                     "auto_confirmed": True,
-                    "customer_confirmed_price": locked.final_price,
+                    "customer_confirmed_price": min(locked.final_price,
+                                                    locked.agreed_price),
                 },
             )
             _on_completed(locked)

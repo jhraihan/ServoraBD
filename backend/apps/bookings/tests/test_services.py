@@ -389,6 +389,26 @@ def test_auto_confirm_after_the_window(customer, provider, service,
     assert booking.auto_confirmed is True
 
 
+def test_auto_confirm_does_not_accept_a_raised_final_price(
+        customer, provider, service, dhanmondi, future_window,
+        django_capture_on_commit_callbacks):
+    from apps.payments.models import Payment
+
+    booking = _booked(customer, provider, service, dhanmondi, future_window)
+    services.start_job(booking_id=booking.id, provider_id=provider.id)
+    services.complete_job(booking_id=booking.id, provider_id=provider.id,
+                          final_price=booking.agreed_price + 5000)
+    Booking.objects.filter(pk=booking.id).update(
+        completed_at=timezone.now() - timezone.timedelta(hours=80),
+    )
+
+    with django_capture_on_commit_callbacks(execute=True):
+        assert services.auto_confirm_bookings() == 1
+
+    booking.refresh_from_db()
+    assert booking.customer_confirmed_price == booking.agreed_price
+    assert Payment.objects.get(booking=booking).status ==         Payment.Status.FLAGGED
+
 def test_auto_confirm_leaves_recent_bookings_alone(
         customer, provider, service, dhanmondi, future_window):
     booking = _booked(customer, provider, service, dhanmondi, future_window)

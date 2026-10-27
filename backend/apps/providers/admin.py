@@ -1,11 +1,22 @@
+from django import forms
 from django.contrib import admin
 from django.urls import reverse
 from django.utils.html import format_html
 
+from . import services
 from .models import (
     Availability, AvailabilityException, ProviderService, ServiceArea,
     VerificationDocument, WorkPhoto,
 )
+
+class VerificationDecisionForm(forms.ModelForm):
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("status") == VerificationDocument.Status.REJECTED and \
+                not cleaned.get("rejection_reason", "").strip():
+            self.add_error("rejection_reason",
+                           "Give a reason for rejecting this document.")
+        return cleaned
 
 @admin.register(ProviderService)
 class ProviderServiceAdmin(admin.ModelAdmin):
@@ -38,8 +49,29 @@ class VerificationDocumentAdmin(admin.ModelAdmin):
                     "reviewed_at"]
     list_filter = ["status", "document_type"]
     search_fields = ["provider__display_name"]
+    form = VerificationDecisionForm
     exclude = ["file"]
-    readonly_fields = ["document", "created_at", "reviewed_at", "reviewed_by"]
+
+    def get_readonly_fields(self, request, obj=None):
+        fields = ["document", "provider", "document_type", "created_at",
+                  "reviewed_at", "reviewed_by", "purge_after"]
+        if obj is not None and obj.is_reviewed:
+            fields += ["status", "rejection_reason"]
+        return fields
+
+    def has_add_permission(self, request):
+        return False
+
+    def save_model(self, request, obj, form, change):
+        if "status" not in form.changed_data or \
+                obj.status == VerificationDocument.Status.PENDING:
+            return
+        services.decide_verification(
+            document_id=obj.pk,
+            reviewer_id=request.user.id,
+            approve=obj.status == VerificationDocument.Status.APPROVED,
+            rejection_reason=obj.rejection_reason,
+        )
 
     @admin.display(description="Document")
     def document(self, obj):

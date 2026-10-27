@@ -18,3 +18,6 @@ class LoginRateThrottle(SimpleRateThrottle):
             "scope": self.scope,
             "ident": self.get_ident(request),
         }
+
+class AdminLoginThrottle(LoginRateThrottle):
+    scope = "admin_login"

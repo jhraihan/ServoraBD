@@ -1,6 +1,10 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework.exceptions import AuthenticationFailed
+from rest_framework_simplejwt.serializers import (
+    TokenObtainPairSerializer, TokenRefreshSerializer,
+)
+from rest_framework_simplejwt.settings import api_settings
 
 from .models import CustomerProfile, PhoneOTP, ProviderProfile
 from .validators import normalise_bd_phone, validate_bd_phone
@@ -59,7 +63,7 @@ class UserSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id", "phone", "email", "phone_verified", "email_verified",
-            "roles", "date_joined",
+            "active_role", "roles", "date_joined",
         ]
 
     def get_roles(self, obj):
@@ -122,3 +126,14 @@ class ServoraTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         data["user"] = UserSerializer(self.user).data
         return data
+
+class ServoraTokenRefreshSerializer(TokenRefreshSerializer):
+    def validate(self, attrs):
+        user_id = self.token_class(attrs["refresh"]).payload.get(
+            api_settings.USER_ID_CLAIM
+        )
+        if User.objects.filter(pk=user_id,
+                               suspended_at__isnull=False).exists():
+            raise AuthenticationFailed("This account has been suspended.",
+                                       code="user_suspended")
+        return super().validate(attrs)

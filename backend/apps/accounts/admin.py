@@ -29,6 +29,25 @@ class UserAdmin(BaseUserAdmin):
         }),
     )
 
+    def get_readonly_fields(self, request, obj=None):
+        fields = list(super().get_readonly_fields(request, obj))
+        if not request.user.is_superuser:
+            fields += ["is_staff", "is_superuser", "groups",
+                       "user_permissions"]
+        return fields
+
+    def has_change_permission(self, request, obj=None):
+        if obj is not None and obj.is_superuser and \
+                not request.user.is_superuser:
+            return False
+        return super().has_change_permission(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        if obj is not None and obj.is_superuser and \
+                not request.user.is_superuser:
+            return False
+        return super().has_delete_permission(request, obj)
+
 @admin.register(CustomerProfile)
 class CustomerProfileAdmin(admin.ModelAdmin):
     list_display = ["__str__", "created_at"]

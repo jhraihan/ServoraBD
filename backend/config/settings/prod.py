@@ -30,6 +30,14 @@ MIDDLEWARE.insert(
     "whitenoise.middleware.WhiteNoiseMiddleware",
 )
 
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+        "LOCATION": "servorabd_cache",
+        "OPTIONS": {"MAX_ENTRIES": 50000},
+    },
+}
+
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "private": {"BACKEND": "apps.common.storage.PrivateMediaStorage"},

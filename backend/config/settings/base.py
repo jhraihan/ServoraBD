@@ -30,7 +30,7 @@ ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 
 
 DJANGO_APPS = [
-    "django.contrib.admin",
+    "apps.common.admin_site.ServoraAdminConfig",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -117,7 +117,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "apps.accounts.authentication.ServoraJWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
@@ -134,6 +134,7 @@ REST_FRAMEWORK = {
         "register": "10/hour",
         "otp_send": "10/hour",
         "otp_verify": "30/hour",
+        "service_request": "10/hour",
     },
 }
 
@@ -146,6 +147,8 @@ SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
     "USER_ID_FIELD": "id",
     "USER_ID_CLAIM": "user_id",
+    "TOKEN_REFRESH_SERIALIZER":
+        "apps.accounts.serializers.ServoraTokenRefreshSerializer",
 }
 
 

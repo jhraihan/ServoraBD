@@ -20,6 +20,10 @@ class ServiceRequestAdmin(admin.ModelAdmin):
                     "expires_at", "created_at"]
     list_filter = ["state", "kind"]
     search_fields = ["customer__user__phone", "service__name"]
+    readonly_fields = [f.name for f in ServiceRequest._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
 
 @admin.register(Booking)
 class BookingAdmin(admin.ModelAdmin):
@@ -27,13 +31,24 @@ class BookingAdmin(admin.ModelAdmin):
                     "agreed_price", "final_price"]
     list_filter = ["state"]
     search_fields = ["provider__display_name", "customer__user__phone"]
+    readonly_fields = [f.name for f in Booking._meta.fields]
     inlines = [BookingEventInline]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 @admin.register(ProviderResponse)
 class ProviderResponseAdmin(admin.ModelAdmin):
     list_display = ["request", "provider", "decision", "response_seconds",
                     "created_at"]
     list_filter = ["decision"]
+    readonly_fields = [f.name for f in ProviderResponse._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
 
 @admin.register(BookingEvent)
 class BookingEventAdmin(admin.ModelAdmin):

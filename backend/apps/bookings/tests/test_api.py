@@ -411,3 +411,15 @@ def test_booking_detail_reports_review_progress(
     )
     assert resp.data["review_submitted"] is False
     assert resp.data["customer_rated"] is False
+
+
+def test_request_creation_is_rate_limited_per_customer(customer_client,
+                                                       service, dhanmondi,
+                                                       future_window):
+    for _ in range(10):
+        assert _create_request(customer_client, service, dhanmondi,
+                               future_window).status_code == 201
+
+    assert _create_request(customer_client, service, dhanmondi,
+                           future_window).status_code == 429
+    assert customer_client.get(reverse("bookings:requests")).status_code == 200

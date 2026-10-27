@@ -2,6 +2,7 @@ from rest_framework import status
 from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from apps.common.exceptions import NotFound
@@ -28,6 +29,12 @@ def _acting_as_provider(user):
 
 class RequestListCreateView(APIView):
     permission_classes = [IsCustomer]
+    throttle_scope = "service_request"
+
+    def get_throttles(self):
+        if self.request.method == "POST":
+            return [ScopedRateThrottle()]
+        return super().get_throttles()
 
     def get(self, request):
         qs = selectors.requests_for_customer(

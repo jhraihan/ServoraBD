@@ -503,3 +503,22 @@ def test_disguised_files_are_rejected(provider_client, name, body):
     assert resp.status_code == 400
     from apps.providers.models import VerificationDocument
     assert not VerificationDocument.objects.exists()
+
+
+def test_work_photo_over_5mb_is_rejected(provider_client):
+    from io import BytesIO
+
+    from PIL import Image
+
+    buffer = BytesIO()
+    Image.new("RGB", (8, 8)).save(buffer, format="PNG")
+    oversized = buffer.getvalue() + b"\x00" * (6 * 1024 * 1024)
+
+    resp = provider_client.post(
+        reverse("providers:my-work-photos"),
+        {"image": SimpleUploadedFile("big.png", oversized,
+                                     content_type="image/png")},
+        format="multipart",
+    )
+    assert resp.status_code == 400
+    assert "image" in resp.data["error"]["details"]["fields"]

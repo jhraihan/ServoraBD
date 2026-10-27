@@ -286,3 +286,36 @@ def test_otp_sending_is_rate_limited_per_ip_across_numbers(client):
 
     blocked = client.post(url, {"phone": "+8801812345678"}, format="json")
     assert blocked.status_code == 429
+
+
+def _suspend(user):
+    from django.utils import timezone
+    user.suspended_at = timezone.now()
+    user.save(update_fields=["suspended_at"])
+
+
+def test_suspension_revokes_an_access_token_already_issued(auth_client, user):
+    _suspend(user)
+
+    resp = auth_client.get(reverse("accounts:me"))
+    assert resp.status_code == 401
+    assert resp.data["error"]["code"] == "user_suspended"
+
+
+def test_suspended_account_cannot_refresh_its_token(client, user):
+    login = client.post(reverse("accounts:login"),
+                        {"phone": PHONE, "password": PASSWORD}, format="json")
+    _suspend(user)
+
+    resp = client.post(reverse("token-refresh"),
+                       {"refresh": login.data["refresh"]}, format="json")
+    assert resp.status_code == 401
+    assert resp.data["error"]["code"] == "user_suspended"
+
+
+def test_active_role_cannot_be_set_through_me(auth_client, user):
+    resp = auth_client.patch(reverse("accounts:me"),
+                             {"active_role": "admin"}, format="json")
+    assert resp.status_code == 200
+    user.refresh_from_db()
+    assert user.active_role == User.Role.CUSTOMER

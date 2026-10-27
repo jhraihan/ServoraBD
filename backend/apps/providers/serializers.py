@@ -163,10 +163,19 @@ class VerificationQueueSerializer(VerificationDocumentSerializer):
 
 
 class WorkPhotoSerializer(serializers.ModelSerializer):
+    MAX_BYTES = 5 * 1024 * 1024
+
     class Meta:
         model = WorkPhoto
         fields = ["id", "image", "caption", "display_order"]
         read_only_fields = ["id", "display_order"]
+
+    def validate_image(self, value):
+        if value.size > self.MAX_BYTES:
+            raise serializers.ValidationError(
+                "Photo must be 5 MB or smaller."
+            )
+        return value
 
 
 class ProviderProfileWriteSerializer(serializers.Serializer):
