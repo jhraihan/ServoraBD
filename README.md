@@ -173,8 +173,9 @@ admin, which signs in with a password and an authenticator app, is unaffected. T
 cron services, so the seven scheduled jobs (booking expiry, review reveal,
 trust recompute) only run when invoked by hand; uploads do not survive a
 deploy; and the service sleeps after fifteen minutes, making the first
-request take about fifty seconds. The free database is deleted 30 days after
-creation, with no backups.
+request take about fifty seconds. The database is on Neon's free plan, which
+does not expire but keeps only a few hours of restore history; Render's own
+free database was deleted after 30 days, which is why it moved.
 [`docs/ServoraBd-Render-Deployment.pdf`](docs/ServoraBd-Render-Deployment.pdf)
 records what was actually done, including the two failed attempts and what is
 still outstanding.
@@ -226,7 +227,7 @@ docs/       PRD (PDF + the source that generates it), trust math reference
 backend/    Django project — see backend/README.md
 frontend/   React client — see frontend/README.md
 deploy/     server configs, backup scripts, both deployment guides
-render.yaml Render blueprint: database, API, cron jobs, static site
+render.yaml Render blueprint: API, cron jobs, static site
 .github/    CI workflow
 ```
 

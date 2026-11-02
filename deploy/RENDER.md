@@ -6,14 +6,16 @@ instead, see [`DEPLOY.md`](DEPLOY.md).
 
 > **Status:** `render.yaml` and the settings it depends on were written and
 > checked locally against a real PostgreSQL database, including a boot under
-> production settings, but **nothing here has been run on Render**. Expect to
-> fix a detail or two on the first attempt. Step 7 is not optional — it is the
-> one check that needs the live site.
+> production settings. The live site was built by hand rather than from the
+> blueprint, and its database moved to Neon when Render's free database
+> expired; [`../docs/ServoraBd-Render-Deployment.pdf`](../docs/ServoraBd-Render-Deployment.pdf)
+> records exactly what was done. Step 8 is not optional — it is the one check
+> that needs the live site.
 >
-> A first deploy now boots with **only** the values Render supplies
-> automatically: SMTP and R2 are optional, and the service starts without them
-> (mail is discarded, uploads go to the container's disk until you add R2).
-> Fill them in as described in step 3 before inviting real users.
+> A first deploy boots with the values Render supplies automatically plus one
+> you paste in, `DATABASE_URL`. SMTP and R2 are optional, and the service starts
+> without them (mail is discarded, uploads go to the container's disk until you
+> add R2). Fill them in as described in step 4 before inviting real users.
 
 ## What you get
 
@@ -24,10 +26,20 @@ Browser ──> servorabd-web (static site, free)
               └─ /api, /admin       forwarded to the API service, so the browser sees one origin
             servorabd-api (web service)   Django under gunicorn
               └─ /healthz/          Render's health check: checks the database too
-            servorabd-db  (PostgreSQL 18)
+            Neon                           PostgreSQL, outside Render
             two cron services              the seven scheduled jobs
             Cloudflare R2                  uploaded files
 ```
+
+## Why the database is on Neon, not Render
+
+Render's free database is deleted 30 days after it is created, and cannot be
+extended. The first live database went that way. Neon's free plan has no
+expiry: an idle database pauses after a few minutes and wakes on the next
+query, which adds well under a second to the first request.
+
+The API reaches Neon over the public internet with TLS, so nothing about the
+app changes: it reads one connection string from `DATABASE_URL`.
 
 ## Why files go to R2, not Render
 
@@ -54,12 +66,12 @@ which requires an admin account.
 
 ## Cost
 
-Check Render's current prices; these were right when this was written.
+Check Render's and Neon's current prices; these were right when this was written.
 
 | Piece | Free tier | Small paid |
 |---|---|---|
 | API service | sleeps after 15 min idle; first visit then takes ~1 min | ~$7/month, always on |
-| PostgreSQL | deleted after 30 days | ~$6/month |
+| Neon PostgreSQL | free, 0.5 GB, no expiry | paid plans for more storage and longer restore history |
 | Static site | free | free |
 | Cron jobs | not available on free | a few cents each per month |
 | Cloudflare R2 | free to 10 GB | free to 10 GB |
@@ -67,7 +79,22 @@ Check Render's current prices; these were right when this was written.
 The free tier is fine for showing the project. It is not suitable for real
 users: a sleeping service also means the scheduled jobs never run.
 
-## 1. Storage bucket
+## 1. Database
+
+At [neon.tech](https://neon.tech):
+
+1. Create a project. Pick the AWS Singapore region, next to the API.
+2. On the project dashboard, press **Connect** and turn **Connection pooling
+   off**. Copy the connection string. It ends in `?sslmode=require`; keep that.
+
+Use the direct string, not the pooled one (its host contains `-pooler`). The
+pooler runs in transaction mode, which breaks the server-side cursors Django
+uses for large querysets.
+
+The string contains the password. Store it in a password manager and in
+Render's environment, never in the repository.
+
+## 2. Storage bucket
 
 In the Cloudflare dashboard, under R2:
 
@@ -78,35 +105,40 @@ In the Cloudflare dashboard, under R2:
 
 The secret is shown once. Store it in a password manager, not in the repository.
 
-## 2. Create the services
+## 3. Create the services
 
 Push the repository to GitHub first — Render deploys from it.
 
 1. In Render, choose **New > Blueprint** and select the repository.
-2. Render reads [`../render.yaml`](../render.yaml) and proposes a database,
-   an API service, two cron services and a static site.
+2. Render reads [`../render.yaml`](../render.yaml) and proposes an API
+   service, two cron services and a static site. It creates no database.
 3. Apply it. The first build takes a few minutes.
 
 Everything is defined in that file, so you do not create services by hand.
+On the free tier Render may still ask for a card; if it does, create the same
+services by hand as the deployment record describes.
 
-## 3. Fill in the settings
+## 4. Fill in the settings
 
 `render.yaml` deliberately leaves secrets blank (`sync: false`). Open
 **servorabd-api > Environment** and set:
 
 | Key | Value |
 |---|---|
+| `DATABASE_URL` | the Neon connection string from step 1 |
 | `ALLOWED_HOSTS` | `servorabd-api.onrender.com` |
 | `CSRF_TRUSTED_ORIGINS` | `https://servorabd-web.onrender.com` |
 | `CORS_ALLOWED_ORIGINS` | leave empty |
-| `S3_ENDPOINT_URL` | your R2 endpoint from step 1 |
-| `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | from step 1 |
+| `S3_ENDPOINT_URL` | your R2 endpoint from step 2 |
+| `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | from step 2 |
 | `S3_BUCKET_NAME` | `servorabd` |
 | `S3_PUBLIC_DOMAIN` | leave empty unless you attach a custom domain to the bucket |
 | `EMAIL_HOST`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `DEFAULT_FROM_EMAIL` | your SMTP details |
 
-Only `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` really need you on the first
-deploy, and even they have a fallback: the service reads Render's own
+`DATABASE_URL` must be set before the first build finishes, because the build
+runs the migrations. Of the rest, only `ALLOWED_HOSTS` and
+`CSRF_TRUSTED_ORIGINS` really need you on the first deploy, and even they have
+a fallback: the service reads Render's own
 `RENDER_EXTERNAL_HOSTNAME` and trusts that host automatically. Set them
 explicitly once you attach a custom domain.
 
@@ -128,11 +160,22 @@ the bucket to do their work.
 If Render gives your services different names, update the three `destination`
 lines in `render.yaml` to match, and redeploy.
 
-## 4. First-time data
+## 5. First-time data
 
 Open **servorabd-api > Shell**:
 
 ```bash
+python manage.py seed_catalogue
+python manage.py createsuperuser
+```
+
+The free plan has no Shell. Run the same two commands on your own machine,
+from `backend/` with the virtual environment active, pointed at Neon:
+
+```powershell
+$env:DATABASE_URL = "<Neon connection string>"
+$env:DJANGO_SETTINGS_MODULE = "config.settings.prod"
+$env:SECRET_KEY = "one-off"
 python manage.py seed_catalogue
 python manage.py createsuperuser
 ```
@@ -143,12 +186,13 @@ applies them.
 Do not run `seed_demo` — it refuses to run when `DEBUG` is off, because it
 creates accounts with a password published in this repository.
 
-## 5. Check the site
+## 6. Check the site
 
 First, `https://servorabd-api.onrender.com/healthz/` should return
 `{"status": "ok", "database": "ok"}`. If it reports the database is
 unavailable, the service is up but `DATABASE_URL` is wrong — check it before
-reading any other symptom.
+reading any other symptom. The first request after a quiet spell wakes both the
+API and Neon, so give it a minute before deciding it is broken.
 
 Then visit `https://servorabd-web.onrender.com`:
 
@@ -160,26 +204,29 @@ Then visit `https://servorabd-web.onrender.com`:
 - As an admin, open the document from Django admin. It opens. Now sign out and
   open the same link: it is refused.
 
-## 6. Backups
+## 7. Backups
 
-Render's paid database plans take daily backups and can restore to a point in
-time. The free plan has none.
+Neon keeps a history of every change and can restore the database to an
+earlier moment. On the free plan that window is short — hours, not weeks —
+so it covers a mistake noticed the same day, not a slow one. Check the current
+limit in Neon's dashboard under **Settings > Storage**.
 
-Render's backups do **not** include the R2 bucket. Cloudflare keeps the objects,
+Neon's history does **not** include the R2 bucket. Cloudflare keeps the objects,
 but nothing protects against a mistaken delete, so for real use enable object
 versioning on the bucket.
 
 To take your own database copy from a machine with `pg_dump` installed, using
-the external connection string from the Render dashboard:
+the Neon connection string. `pg_dump` must be the same major version as Neon's
+PostgreSQL, or newer:
 
 ```bash
-pg_dump --format=custom --no-owner --dbname="<external connection string>" --file=servorabd.dump
+pg_dump --format=custom --no-owner --dbname="<Neon connection string>" --file=servorabd.dump
 ```
 
 [`scripts/restore-check.sh`](scripts/restore-check.sh) verifies such a dump can
 actually be restored. A backup nobody has restored is not yet a backup.
 
-## 7. Check the rate limiting — do not skip this
+## 8. Check the rate limiting — do not skip this
 
 Login, OTP and search limits identify a caller by IP address. Behind a proxy,
 Django reads that from the `X-Forwarded-For` header, trusting as many entries
@@ -225,7 +272,7 @@ their own phone in its place.
 **Reset two-factor**. They set up a new app at their next sign-in. Keep a
 second superuser with its own app, so that one lost phone never locks the
 platform out. If the last superuser is locked out, run this in
-**servorabd-api > Shell** (paid plans only):
+**servorabd-api > Shell** on a paid plan, or locally against Neon as in step 5:
 
 ```bash
 python manage.py shell -c "from django_otp.plugins.otp_totp.models import TOTPDevice; TOTPDevice.objects.filter(user__phone='+8801XXXXXXXXX').delete()"
@@ -301,5 +348,5 @@ Not verified, because it needs a live deployment:
   were exercised locally, not in Render's build image.
 - That the static site's rewrite rules behave as expected, particularly
   `/` versus every other path.
-- **How many proxies sit in front of the app** — hence step 7.
+- **How many proxies sit in front of the app** — hence step 8.
 - R2 credentials against the real service.

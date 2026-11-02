@@ -8,15 +8,15 @@ Same (kind, payload) format as guide_content.py, rendered by build_deploy.py.
 TITLE = "ServoraBd"
 SUBTITLE = "Local Service Marketplace"
 DOC_TYPE = "Render Deployment Record"
-VERSION = "1.0"
+VERSION = "1.1"
 STATUS = "Live on the free tier"
-DATE = "30 September 2026"
+DATE = "2 November 2026"
 AUTHOR = "Jahid H. R."
 
 PITCH = (
     "How this project was put on the internet: the code changes it needed, "
-    "the two routes that failed, the one that worked, and what is still "
-    "outstanding."
+    "the two routes that failed, the one that worked, the move to Neon when "
+    "Render's free database expired, and what is still outstanding."
 )
 
 DOC = []
@@ -42,8 +42,8 @@ add(
             ["API",
              "<font face='Courier'>servorabd-api.onrender.com</font>",
              "Free, sleeps when idle"],
-            ["Database", "PostgreSQL 18, Singapore",
-             "Free, <b>deleted after 30 days</b>"],
+            ["Database", "Neon PostgreSQL, outside Render",
+             "Free, no expiry"],
         ],
     }),
 
@@ -52,7 +52,9 @@ add(
           "and the site serves 8 categories, 45 services and 38 locations "
           "through the API. Deployed from commit "
           "<font face='Courier'>36d4190</font> on "
-          "<font face='Courier'>main</font>."),
+          "<font face='Courier'>main</font>. The database first lived on "
+          "Render and moved to Neon when Render deleted it; section 4.6 "
+          "covers the move."),
 
     ("h2", "1.1 The shape of it"),
 
@@ -69,7 +71,7 @@ add(
         "servorabd-api  (web service)   Django + gunicorn",
         "   |",
         "   v",
-        "servorabd-db   (PostgreSQL 18)",
+        "Neon           (PostgreSQL, over TLS)",
     ]),
 
     ("p", "The browser only ever talks to the static site. It forwards "
@@ -191,7 +193,9 @@ add(
         "body": "<font face='Courier'>render-free.yaml</font> is ready to use. "
                 "Point the <b>Blueprint Path</b> field at it &mdash; the field "
                 "defaults to <font face='Courier'>render.yaml</font>, which is "
-                "the paid one and will be billed.",
+                "the paid one and will be billed. Neither file creates a "
+                "database any more: paste the Neon connection string into "
+                "<font face='Courier'>DATABASE_URL</font> when Render asks.",
     }),
 
     ("pagebreak", None),
@@ -204,23 +208,29 @@ add(
 add(
     ("h1", "4. The route that worked: services by hand"),
 
-    ("h2", "4.1 Database &mdash; New &gt; Postgres"),
+    ("h2", "4.1 Database &mdash; a Neon project"),
+
+    ("p", "The first database was Render&rsquo;s free Postgres, created under "
+          "<b>New &gt; Postgres</b>. Render deletes those 30 days after "
+          "creation, so it is gone; section 4.6 describes the move. Today "
+          "the database is a Neon project on the free plan:"),
 
     ("table", {
         "cols": ["Field", "Value"],
         "widths": [0.32, 0.68],
         "rows": [
-            ["Name", "<font face='Courier'>servorabd-db</font>"],
-            ["Region", "Singapore"],
-            ["PostgreSQL Version", "18"],
-            ["Compute", "<b>$0 / month (Free)</b> &mdash; the form defaults to "
-                        "a paid row"],
+            ["Plan", "Free &mdash; 0.5 GB, no expiry"],
+            ["Region", "AWS Singapore, next to the API"],
+            ["Connection string",
+             "<b>Direct</b>, with connection pooling turned off, ending in "
+             "<font face='Courier'>?sslmode=require</font>"],
         ],
     }),
 
-    ("p", "Selecting the free compute row also removes the separate storage "
-          "charge. The total at the bottom of the form should read "
-          "<font face='Courier'>$0 / month</font> before creating."),
+    ("p", "The direct string, not the pooled one: Neon&rsquo;s pooler runs in "
+          "transaction mode, which breaks the server-side cursors Django uses "
+          "for large querysets. An idle Neon database pauses after a few "
+          "minutes and wakes on the next query in well under a second."),
 
     ("h2", "4.2 API &mdash; New &gt; Web Service"),
 
@@ -263,13 +273,13 @@ add(
         "DEBUG                  = False",
         "USE_OBJECT_STORAGE     = False",
         "TRUSTED_PROXY_COUNT    = 1",
-        "DATABASE_URL           = <Internal Database URL>",
+        "DATABASE_URL           = <Neon connection string>",
         "SECRET_KEY             = <Generate>",
     ]),
 
-    ("p", "<b>Internal</b>, not External: the internal address resolves only "
-          "inside Render&rsquo;s network, which is what you want between two "
-          "services in the same region."),
+    ("p", "The connection string carries the password. It lives in the "
+          "Render environment and a password manager, never in the "
+          "repository."),
 
     ("h2", "4.3 Front end &mdash; New &gt; Static Site"),
 
@@ -327,12 +337,12 @@ add(
     ("h2", "4.5 Seeding"),
 
     ("p", "Free web services have no shell, so these were run locally against "
-          "the <b>External</b> connection string, from "
+          "the Neon connection string, from "
           "<font face='Courier'>backend/</font> with the virtual environment "
           "active:"),
 
     ("code", [
-        "$env:DATABASE_URL = \"<External Database URL>\"",
+        "$env:DATABASE_URL = \"<Neon connection string>\"",
         "$env:DJANGO_SETTINGS_MODULE = \"config.settings.prod\"",
         "$env:SECRET_KEY = \"one-off\"",
         "python manage.py seed_catalogue      # 8 categories, 45 services,",
@@ -352,6 +362,31 @@ add(
                 "<font face='Courier'>/admin/</font> &gt; Users, or with "
                 "<font face='Courier'>manage.py shell</font>.",
     }),
+
+    ("h2", "4.6 Moving the database to Neon"),
+
+    ("p", "Render&rsquo;s free database reached its 30-day limit and was "
+          "deleted, and the site lost its data with it. The free plan has no "
+          "backups, so there was nothing to copy across. The move was a fresh "
+          "start:"),
+
+    ("bullets", [
+        "Created a Neon project as in 4.1 and copied the direct connection "
+        "string.",
+        "Replaced <font face='Courier'>DATABASE_URL</font> on "
+        "<font face='Courier'>servorabd-api</font> with it. Saving the "
+        "variable redeployed the service, and the build ran every migration "
+        "against the empty database.",
+        "Ran <font face='Courier'>seed_catalogue</font> and "
+        "<font face='Courier'>createsuperuser</font> locally, as in 4.5.",
+        "Signed in to <font face='Courier'>/admin/</font> as the new "
+        "superuser and enrolled its authenticator app.",
+    ]),
+
+    ("p", "Checked afterwards: <font face='Courier'>/healthz/</font> reports "
+          "the database <font face='Courier'>ok</font>, and the categories and "
+          "services come back through both the API address and the static "
+          "site&rsquo;s rewrite. Nothing in the code changed."),
 
     ("pagebreak", None),
 )
@@ -425,22 +460,21 @@ add(
     ("h2", "6.1 Two things to act on"),
 
     ("callout", {
-        "title": "Rotate the database password",
-        "body": "The External Database URL &mdash; user, password and host "
-                "&mdash; was shown in a screenshot during the deployment "
-                "session. Treat it as disclosed. In Render: "
-                "<b>servorabd-db &gt; Settings</b>, reset the password, then "
-                "update <font face='Courier'>DATABASE_URL</font> on the API "
-                "service.",
+        "title": "Delete the expired Render database",
+        "body": "<font face='Courier'>servorabd-db</font> still appears in the "
+                "Render dashboard as expired. Nothing uses it. Delete it so "
+                "no one mistakes it for the live database.",
     }),
 
     ("callout", {
-        "title": "Set a reminder for the 30-day expiry",
-        "body": "The free database is deleted 30 days after creation. It "
-                "cannot be extended, and cannot be upgraded in place &mdash; "
-                "you create a paid one and copy the data across. There is no "
-                "backup on the free plan, so once it is gone the data is "
-                "gone.",
+        "title": "Take your own copies",
+        "body": "Neon&rsquo;s free plan keeps only a few hours of history to "
+                "restore from, so a mistake noticed the next day cannot be "
+                "undone there. Take a <font face='Courier'>pg_dump</font> "
+                "(6.3) before anything risky and keep it off the server. If "
+                "the connection string is ever shown on screen or pasted "
+                "anywhere, reset the role&rsquo;s password in Neon and update "
+                "<font face='Courier'>DATABASE_URL</font>.",
     }),
 
     ("h2", "6.2 Working as designed, but limited"),
@@ -475,14 +509,14 @@ add(
     ("h2", "6.3 Moving to paid"),
 
     ("p", "<font face='Courier'>render.yaml</font> already describes the paid "
-          "arrangement: a database with no expiry and daily backups, a service "
-          "that never sleeps, two cron services, and object storage for "
-          "uploads. Take a copy of the data first, while the free database "
-          "still exists:"),
+          "arrangement: a service that never sleeps, two cron services, and "
+          "object storage for uploads. The database stays on Neon; a paid "
+          "Neon plan adds storage and a longer restore window. Take a copy "
+          "of the data first:"),
 
     ("code", [
         "pg_dump --format=custom --no-owner \\",
-        "        --dbname=\"<External Database URL>\" \\",
+        "        --dbname=\"<Neon connection string>\" \\",
         "        --file=servorabd.dump",
     ]),
 

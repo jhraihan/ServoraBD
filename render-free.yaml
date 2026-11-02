@@ -5,7 +5,8 @@
 #   anything with real users.
 #
 # What the free tier costs you, and it is not money:
-#   * The database is DELETED after 30 days. It cannot be extended.
+#   * The database lives on Neon's free plan, not Render: paste its
+#     connection string into DATABASE_URL.
 #   * The API sleeps after 15 minutes idle; the next visit takes ~50s.
 #   * Cron services do not exist on free, so the seven scheduled jobs do not
 #     run. Bookings will not auto-expire, reviews will not auto-reveal.
@@ -14,11 +15,6 @@
 # None of that stops the site working for a walkthrough. All of it stops it
 # being suitable for real users.
 # ==========================================================================
-
-databases:
-  - name: servorabd-db
-    plan: free
-    postgresMajorVersion: "18"
 
 services:
   - type: web
@@ -43,9 +39,7 @@ services:
       - key: DEBUG
         value: "False"
       - key: DATABASE_URL
-        fromDatabase:
-          name: servorabd-db
-          property: connectionString
+        sync: false
       # Left blank on purpose: prod.py falls back to Render's own
       # RENDER_EXTERNAL_HOSTNAME, so the service answers on its .onrender.com
       # address without you setting anything. Fill these in for a custom domain.
