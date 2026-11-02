@@ -4,6 +4,7 @@ import { BrowserRouter, useRoutes } from "react-router-dom";
 import Layout, { RequireRole } from "./components/Layout";
 import { Button, EmptyState, PageLoader } from "./components/ui";
 import { ROLE } from "./constants/domain";
+import { useDocumentTitle } from "./hooks/useDocumentTitle";
 import Home from "./pages/Home";
 
 const Services = lazy(() => import("./pages/Services").then((m) => ({ default: m.Services })));
@@ -36,7 +37,19 @@ function provider(element) {
 }
 
 function NotFound() {
-  return <EmptyState title="Page not found" body="That page does not exist or has moved." action={<Button to="/">Go home</Button>} />;
+  useDocumentTitle("Page not found");
+  return (
+    <EmptyState
+      title="Page not found"
+      body="That page does not exist or has moved."
+      action={
+        <>
+          <Button to="/">Go home</Button>
+          <Button variant="secondary" to="/services">Browse services</Button>
+        </>
+      }
+    />
+  );
 }
 
 const routes = [

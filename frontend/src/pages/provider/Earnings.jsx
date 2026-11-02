@@ -1,9 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { me } from "../../api/endpoints";
 import { Money } from "../../components/domain";
-import { ErrorMessage, PageHeader, PageLoader, Stat } from "../../components/ui";
+import { ErrorMessage, PageHeader, PageLoader, SkeletonList, Stat } from "../../components/ui";
 import { LEDGER_KIND_LABEL } from "../../constants/domain";
 import { formatDate, formatPeriod, plural } from "../../lib/format";
 
@@ -15,11 +15,15 @@ const PERIODS = [
 
 export default function Earnings() {
   const [period, setPeriod] = useState("month");
-  const earnings = useQuery({ queryKey: ["earnings", period], queryFn: () => me.earnings({ period }) });
+  const earnings = useQuery({
+    queryKey: ["earnings", period],
+    queryFn: () => me.earnings({ period }),
+    placeholderData: keepPreviousData,
+  });
   const ledger = useQuery({ queryKey: ["ledger"], queryFn: () => me.ledger({ page_size: 50 }) });
 
   if (earnings.isLoading) return <PageLoader />;
-  if (earnings.error) return <ErrorMessage error={earnings.error} />;
+  if (earnings.error && !earnings.data) return <ErrorMessage error={earnings.error} onRetry={earnings.refetch} />;
 
   const s = earnings.data.summary;
 
@@ -52,10 +56,11 @@ export default function Earnings() {
             ))}
           </div>
         </div>
+        <ErrorMessage error={earnings.error} onRetry={earnings.refetch} className="mb-3" />
         {earnings.data.periods.length === 0 ? (
           <p className="card p-5 text-sm text-slate-600">No completed jobs yet.</p>
         ) : (
-          <div className="card overflow-x-auto">
+          <div className={`card overflow-x-auto transition-opacity ${earnings.isPlaceholderData ? "opacity-60" : ""}`}>
             <table className="w-full min-w-[480px] text-sm">
               <thead className="border-b border-slate-200 text-left text-xs uppercase text-slate-600">
                 <tr>
@@ -84,10 +89,10 @@ export default function Earnings() {
 
       <section className="mt-8">
         <h2 className="section-title mb-3">Ledger</h2>
-        <ErrorMessage error={ledger.error} />
+        <ErrorMessage error={ledger.error} onRetry={ledger.refetch} className="mb-3" />
         {ledger.isLoading ? (
-          <PageLoader />
-        ) : (
+          <SkeletonList count={1} itemClassName="h-40" />
+        ) : !ledger.data ? null : (
           <ul className="card divide-y divide-slate-100">
             {ledger.data.results.length === 0 && <li className="p-4 text-sm text-slate-600">No entries yet.</li>}
             {ledger.data.results.map((e) => (

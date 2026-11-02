@@ -6,6 +6,7 @@ import { bookings, reviews } from "../api/endpoints";
 import { StarInput } from "../components/domain";
 import { Button, EmptyState, ErrorMessage, Field, PageHeader, PageLoader } from "../components/ui";
 import { BOOKING_STATE } from "../constants/domain";
+import { toast } from "../store/toast";
 
 const ASPECTS = [
   ["punctuality", "Punctuality"],
@@ -22,7 +23,7 @@ export default function ReviewBooking() {
     rating: 0, punctuality: 0, quality: 0, professionalism: 0, priceFairness: 0, comment: "",
   });
 
-  const { data: booking, isLoading, error } = useQuery({
+  const { data: booking, isLoading, error, refetch } = useQuery({
     queryKey: ["booking", bookingId],
     queryFn: () => bookings.detail(bookingId),
   });
@@ -31,12 +32,13 @@ export default function ReviewBooking() {
     mutationFn: () => reviews.create({ bookingId: Number(bookingId), ...form }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["booking", bookingId] });
+      toast("Review submitted and sealed.");
       navigate(`/my-bookings/${bookingId}`, { replace: true });
     },
   });
 
   if (isLoading) return <PageLoader />;
-  if (error) return <ErrorMessage error={error} />;
+  if (error) return <ErrorMessage error={error} onRetry={refetch} />;
 
   if (booking.state !== BOOKING_STATE.COMPLETED) {
     return <EmptyState title="This job is not finished yet" body="You can review a booking once it is completed." action={<Button to={`/my-bookings/${bookingId}`}>Back to booking</Button>} />;
@@ -81,6 +83,7 @@ export default function ReviewBooking() {
           <textarea id="review-comment" className="input" rows={4} maxLength={2000} value={form.comment} onChange={(e) => setForm((f) => ({ ...f, comment: e.target.value }))} />
         </Field>
         <ErrorMessage error={submit.error} />
+        {!form.rating && <p className="text-sm text-slate-600">Choose an overall rating to submit.</p>}
         <Button type="submit" size="lg" className="w-full" loading={submit.isPending} disabled={!form.rating}>
           Submit review
         </Button>

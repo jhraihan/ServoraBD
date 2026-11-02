@@ -30,14 +30,12 @@ export function useAllServices() {
   });
 }
 
-export function useServiceSearch(term) {
-  const { data: services, isLoading } = useAllServices();
+export function matchServices(services, term) {
   const query = term.trim().toLowerCase();
-
-  if (!query) return { matches: [], isLoading, isEmpty: false };
+  if (!query) return services ?? [];
 
   const words = query.split(/\s+/).filter(Boolean);
-  const scored = (services ?? [])
+  return (services ?? [])
     .map((service) => {
       const name = service.name.toLowerCase();
       const haystack = `${name} ${service.categoryName ?? ""} ${service.searchTerms ?? ""}`.toLowerCase();
@@ -46,12 +44,20 @@ export function useServiceSearch(term) {
       return { service, rank };
     })
     .filter(Boolean)
-    .sort((a, b) => a.rank - b.rank || a.service.name.localeCompare(b.service.name));
+    .sort((a, b) => a.rank - b.rank || a.service.name.localeCompare(b.service.name))
+    .map((s) => s.service);
+}
 
+export function useServiceSearch(term) {
+  const { data: services, isLoading } = useAllServices();
+
+  if (!term.trim()) return { matches: [], isLoading, isEmpty: false };
+
+  const matches = matchServices(services, term);
   return {
-    matches: scored.map((s) => s.service),
+    matches,
     isLoading,
-    isEmpty: !isLoading && scored.length === 0,
+    isEmpty: !isLoading && matches.length === 0,
   };
 }
 

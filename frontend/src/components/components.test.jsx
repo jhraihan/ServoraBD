@@ -1,11 +1,13 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { matchServices } from "../hooks/useCatalogue";
 import { useCompareStore } from "../store/compare";
-import { BookingStateBadge, BookingTimeline, ProviderCard, Stars } from "./domain";
+import { BookingStateBadge, BookingTimeline, ProviderCard, StarInput, Stars } from "./domain";
 import { TrustBadge, TrustBreakdown } from "./Trust";
+import { ConfirmAction, ErrorMessage, PasswordInput } from "./ui";
 
 const trust = {
   score: 53.48,
@@ -127,5 +129,89 @@ describe("ProviderCard", () => {
     await userEvent.click(screen.getByRole("button", { name: "Compare" }));
     expect(useCompareStore.getState().ids).toEqual([7]);
     expect(screen.getByRole("button", { name: "Comparing" })).toHaveAttribute("aria-pressed", "true");
+  });
+});
+
+describe("ConfirmAction", () => {
+  it("asks before running a destructive action", async () => {
+    const onConfirm = vi.fn();
+    render(<ConfirmAction label="Withdraw" prompt="Withdraw this request?" confirmLabel="Yes, withdraw" onConfirm={onConfirm} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Withdraw" }));
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Keep" })).toHaveFocus();
+
+    await userEvent.click(screen.getByRole("button", { name: "Yes, withdraw" }));
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it("backs out without acting", async () => {
+    const onConfirm = vi.fn();
+    render(<ConfirmAction label="Remove" prompt="Remove this service?" confirmLabel="Yes, remove" onConfirm={onConfirm} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Remove" }));
+    await userEvent.click(screen.getByRole("button", { name: "Keep" }));
+
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Remove" })).toBeInTheDocument();
+  });
+});
+
+describe("PasswordInput", () => {
+  it("reveals and hides what was typed", async () => {
+    render(
+      <>
+        <label htmlFor="pw">Password</label>
+        <PasswordInput id="pw" value="secret123" onChange={() => {}} />
+      </>,
+    );
+    const input = screen.getByLabelText("Password");
+    expect(input).toHaveAttribute("type", "password");
+
+    await userEvent.click(screen.getByRole("button", { name: "Show password" }));
+    expect(input).toHaveAttribute("type", "text");
+    expect(screen.getByRole("button", { name: "Hide password" })).toHaveAttribute("aria-pressed", "true");
+  });
+});
+
+describe("StarInput", () => {
+  it("names the rating as it is chosen", async () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<StarInput name="overall" label="Overall" value={0} onChange={onChange} />);
+
+    await userEvent.click(screen.getByTestId("overall-4"));
+    expect(onChange).toHaveBeenCalledWith(4);
+
+    rerender(<StarInput name="overall" label="Overall" value={4} onChange={onChange} />);
+    await userEvent.unhover(screen.getByTestId("overall-4"));
+    expect(screen.getByText("Very good")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "4 stars" })).toHaveAttribute("aria-checked", "true");
+  });
+});
+
+describe("ErrorMessage", () => {
+  it("offers a retry when one is possible", async () => {
+    const onRetry = vi.fn();
+    render(<ErrorMessage error="Could not reach the server." onRetry={onRetry} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("matchServices", () => {
+  const services = [
+    { id: 1, name: "Pipe leak repair", categoryName: "Plumbing", searchTerms: "leak water" },
+    { id: 2, name: "AC servicing", categoryName: "AC & Refrigeration", searchTerms: "not cooling" },
+    { id: 3, name: "Leak detection", categoryName: "Plumbing", searchTerms: "" },
+  ];
+
+  it("returns everything for an empty term", () => {
+    expect(matchServices(services, "  ")).toHaveLength(3);
+  });
+
+  it("matches problems as well as names, best match first", () => {
+    expect(matchServices(services, "leak").map((s) => s.id)).toEqual([3, 1]);
+    expect(matchServices(services, "not cooling").map((s) => s.id)).toEqual([2]);
   });
 });

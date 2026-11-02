@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { me, providers } from "../../api/endpoints";
 import { TrustBadge, TrustBreakdown } from "../../components/Trust";
-import { ErrorMessage, PageHeader, PageLoader } from "../../components/ui";
+import { Button, EmptyState, ErrorMessage, PageHeader, PageLoader } from "../../components/ui";
 import { useSession } from "../../hooks/useSession";
 import { formatDateTime } from "../../lib/format";
 
@@ -35,7 +35,19 @@ export default function TrustPage() {
   const history = useQuery({ queryKey: ["trust-history"], queryFn: me.trustHistory });
 
   if (trust.isLoading) return <PageLoader />;
-  if (trust.error) return <ErrorMessage error={trust.error} />;
+  if (trust.error) return <ErrorMessage error={trust.error} onRetry={trust.refetch} />;
+  if (!trust.data) {
+    return (
+      <>
+        <PageHeader title="Your trust score" />
+        <EmptyState
+          title="No trust score yet"
+          body="Finish setting up your provider profile and your score will appear here."
+          action={<Button to="/provider/profile">Set up profile</Button>}
+        />
+      </>
+    );
+  }
 
   const weakest = [...trust.data.factors].sort((a, b) => a.score - b.score).slice(0, 2);
 

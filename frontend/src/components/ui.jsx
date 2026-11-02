@@ -1,5 +1,9 @@
 import PropTypes from "prop-types";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { useToastStore } from "../store/toast";
 
 const BUTTON_VARIANTS = {
   primary: "bg-ink text-white hover:bg-brand-900 disabled:bg-ink/50",
@@ -74,18 +78,41 @@ export function PageLoader() {
   );
 }
 
-export function ErrorMessage({ error, className = "" }) {
+export function SkeletonList({ count = 3, itemClassName = "h-28", className = "space-y-3" }) {
+  return (
+    <div className={className}>
+      <span role="status" className="sr-only">Loading</span>
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} aria-hidden="true" className={`card motion-safe:animate-pulse ${itemClassName}`} />
+      ))}
+    </div>
+  );
+}
+
+SkeletonList.propTypes = {
+  count: PropTypes.number,
+  itemClassName: PropTypes.string,
+  className: PropTypes.string,
+};
+
+export function ErrorMessage({ error, onRetry, className = "" }) {
   if (!error) return null;
   const message = typeof error === "string" ? error : error.message;
   return (
-    <div role="alert" className={`rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 ${className}`}>
-      {message}
+    <div role="alert" className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 ${className}`}>
+      <span>{message}</span>
+      {onRetry && (
+        <button type="button" onClick={() => onRetry()} className="font-semibold underline underline-offset-2 hover:text-rose-950">
+          Try again
+        </button>
+      )}
     </div>
   );
 }
 
 ErrorMessage.propTypes = {
   error: PropTypes.oneOfType([PropTypes.string, PropTypes.instanceOf(Error)]),
+  onRetry: PropTypes.func,
   className: PropTypes.string,
 };
 
@@ -94,7 +121,7 @@ export function EmptyState({ title, body, action }) {
     <div className="card flex flex-col items-center px-6 py-12 text-center">
       <p className="text-base font-semibold text-ink">{title}</p>
       {body && <p className="mt-1.5 max-w-sm text-sm text-slate-600">{body}</p>}
-      {action && <div className="mt-5">{action}</div>}
+      {action && <div className="mt-5 flex flex-wrap justify-center gap-2">{action}</div>}
     </div>
   );
 }
@@ -103,6 +130,109 @@ EmptyState.propTypes = {
   title: PropTypes.string.isRequired,
   body: PropTypes.string,
   action: PropTypes.node,
+};
+
+export function ConfirmAction({ label, prompt, confirmLabel, onConfirm, loading = false }) {
+  const [asking, setAsking] = useState(false);
+
+  if (!asking) {
+    return (
+      <Button variant="ghost" size="sm" onClick={() => setAsking(true)}>
+        {label}
+      </Button>
+    );
+  }
+
+  return (
+    <span
+      role="group"
+      aria-label={prompt}
+      className="inline-flex flex-wrap items-center gap-2"
+      onKeyDown={(e) => e.key === "Escape" && setAsking(false)}
+    >
+      <span className="text-sm font-medium text-slate-700">{prompt}</span>
+      <Button variant="danger" size="sm" loading={loading} onClick={onConfirm}>
+        {confirmLabel}
+      </Button>
+      <Button variant="secondary" size="sm" onClick={() => setAsking(false)} autoFocus>
+        Keep
+      </Button>
+    </span>
+  );
+}
+
+ConfirmAction.propTypes = {
+  label: PropTypes.string.isRequired,
+  prompt: PropTypes.string.isRequired,
+  confirmLabel: PropTypes.string.isRequired,
+  onConfirm: PropTypes.func.isRequired,
+  loading: PropTypes.bool,
+};
+
+export function PasswordInput({ id, ...rest }) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="relative">
+      <input id={id} type={visible ? "text" : "password"} className="input pr-20" {...rest} />
+      <button
+        type="button"
+        onClick={() => setVisible((v) => !v)}
+        aria-pressed={visible}
+        aria-controls={id}
+        className="absolute top-1/2 right-2 -translate-y-1/2 rounded-full px-3 py-1.5 text-sm font-semibold text-brand-700 hover:bg-brand-50"
+      >
+        {visible ? "Hide" : "Show"}
+        <span className="sr-only"> password</span>
+      </button>
+    </div>
+  );
+}
+
+PasswordInput.propTypes = { id: PropTypes.string.isRequired };
+
+const TOAST_TONES = {
+  good: "bg-ink text-white",
+  bad: "bg-rose-700 text-white",
+};
+
+export function Toaster() {
+  const toasts = useToastStore((s) => s.toasts);
+  const dismiss = useToastStore((s) => s.dismiss);
+  return (
+    <div role="status" className="on-dark pointer-events-none fixed inset-x-0 top-20 z-50 flex flex-col items-center gap-2 px-4">
+      {toasts.map((t) => (
+        <ToastItem key={t.id} toast={t} onDismiss={dismiss} />
+      ))}
+    </div>
+  );
+}
+
+function ToastItem({ toast, onDismiss }) {
+  useEffect(() => {
+    const timer = setTimeout(() => onDismiss(toast.id), 4500);
+    return () => clearTimeout(timer);
+  }, [toast.id, onDismiss]);
+
+  return (
+    <div className={`pointer-events-auto flex w-full max-w-sm items-center justify-between gap-3 rounded-2xl py-3 pr-2 pl-4 text-sm font-medium shadow-2xl motion-safe:animate-toast-in ${TOAST_TONES[toast.tone] ?? TOAST_TONES.good}`}>
+      <span>{toast.message}</span>
+      <button type="button" onClick={() => onDismiss(toast.id)} className="rounded-full p-1.5 text-white/80 hover:bg-white/10 hover:text-white">
+        <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <path d="M5 5l10 10M15 5 5 15" strokeLinecap="round" />
+        </svg>
+        <span className="sr-only">Dismiss</span>
+      </button>
+    </div>
+  );
+}
+
+ToastItem.propTypes = {
+  toast: PropTypes.shape({
+    id: PropTypes.number.isRequired,
+    message: PropTypes.string.isRequired,
+    tone: PropTypes.string,
+  }).isRequired,
+  onDismiss: PropTypes.func.isRequired,
 };
 
 const BADGE_TONES = {
@@ -149,6 +279,7 @@ Field.propTypes = {
 };
 
 export function PageHeader({ title, subtitle, action }) {
+  useDocumentTitle(title);
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
       <div>

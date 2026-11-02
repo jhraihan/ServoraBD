@@ -1,12 +1,14 @@
 import PropTypes from "prop-types";
-import { useMemo, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { useMemo } from "react";
+import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
 
 import CategoryIcon from "../components/CategoryIcon";
 import { Money } from "../components/domain";
-import { ErrorMessage, PageLoader } from "../components/ui";
+import { Button, EmptyState, ErrorMessage, SkeletonList } from "../components/ui";
 import { categoryTheme } from "../constants/categories";
-import { useAllServices, useCategories } from "../hooks/useCatalogue";
+import { matchServices, useAllServices, useCategories } from "../hooks/useCatalogue";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { plural } from "../lib/format";
 
 function ServiceCard({ service, theme }) {
   return (
@@ -29,7 +31,9 @@ function ServiceCard({ service, theme }) {
           <p className="mt-2 text-sm text-slate-600">
             {service.priceMin && service.priceMax ? (
               <>
-                From <Money value={service.priceMin} className="font-semibold text-ink" />
+                Typically <Money value={service.priceMin} className="font-semibold text-ink" />
+                {" – "}
+                <Money value={service.priceMax} className="font-semibold text-ink" />
               </>
             ) : (
               "Quoted after a visit"
@@ -60,30 +64,33 @@ ServiceCard.propTypes = {
   theme: PropTypes.object.isRequired,
 };
 
-function ServiceBrowser({ initialCategory }) {
-  const { data: categories, error: catError } = useCategories();
-  const { data: services, isLoading, error } = useAllServices();
+export function Services() {
+  const categories = useCategories();
+  const { data: services, isLoading, error, refetch } = useAllServices();
   const [params, setParams] = useSearchParams();
-  const [active, setActive] = useState(initialCategory ?? params.get("category") ?? "");
+  const active = params.get("category") ?? "";
+  const query = params.get("q") ?? "";
 
-  const byCategory = useMemo(() => {
+  const inCategory = useMemo(() => {
     const rows = services ?? [];
     return active ? rows.filter((s) => s.categorySlug === active) : rows;
   }, [services, active]);
+  const visible = useMemo(() => matchServices(inCategory, query), [inCategory, query]);
+  const elsewhere = active && query.trim() ? matchServices(services, query).length - visible.length : 0;
 
-  function pick(slug) {
-    setActive(slug);
+  function setParam(key, value) {
     const next = new URLSearchParams(params);
-    if (slug) next.set("category", slug);
-    else next.delete("category");
+    if (value) next.set(key, value);
+    else next.delete(key);
     setParams(next, { replace: true });
   }
 
-  const activeCategory = (categories ?? []).find((c) => c.slug === active);
+  const activeCategory = (categories.data ?? []).find((c) => c.slug === active);
+  useDocumentTitle(activeCategory ? activeCategory.name : "Services");
 
   return (
     <>
-      <div className="mb-6 min-h-[4.5rem]">
+      <div className="mb-5 min-h-[4.5rem]">
         <h1 className="page-title">
           {activeCategory ? activeCategory.name : "Every service"}
         </h1>
@@ -92,27 +99,47 @@ function ServiceBrowser({ initialCategory }) {
             ? activeCategory.description
             : "Every service we cover, one tap from a provider."}
         </p>
+        <div className="relative mt-5 max-w-xl">
+          <label htmlFor="service-filter" className="sr-only">
+            Filter services
+          </label>
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" className="pointer-events-none absolute top-1/2 left-4 h-5 w-5 -translate-y-1/2 text-slate-600">
+            <circle cx="9" cy="9" r="6" />
+            <path d="M13.5 13.5 17 17" strokeLinecap="round" />
+          </svg>
+          <input
+            id="service-filter"
+            type="search"
+            autoComplete="off"
+            className="input rounded-full pl-12"
+            placeholder="Filter by name or problem, e.g. “leak”"
+            value={query}
+            onChange={(e) => setParam("q", e.target.value)}
+          />
+        </div>
       </div>
 
-      <div className="sticky top-16 z-10 -mx-4 mb-6 bg-canvas/85 px-4 py-3 backdrop-blur-xl lg:top-0">
+      <div className="sticky top-16 z-10 -mx-4 mb-6 bg-canvas/85 px-4 py-3 backdrop-blur-xl">
         <div className="-mx-1 overflow-x-auto px-1 pb-1">
-          <div className="flex min-h-[2.75rem] gap-2">
+          <div className="flex min-h-[2.75rem] gap-2" role="group" aria-label="Categories">
             <button
               type="button"
-              onClick={() => pick("")}
+              onClick={() => setParam("category", "")}
+              aria-pressed={active === ""}
               className={`chip ${active === "" ? "chip-active" : "chip-idle"}`}
             >
               All {(services ?? []).length}
             </button>
-            {(categories ?? []).map((c) => {
+            {(categories.data ?? []).map((c) => {
               const theme = categoryTheme(c.slug);
               const on = active === c.slug;
               return (
                 <button
                   key={c.id}
                   type="button"
-                  onClick={() => pick(c.slug)}
-                  className={`chip ${on ? "text-white" : "chip-idle"}`}
+                  onClick={() => setParam("category", c.slug)}
+                  aria-pressed={on}
+                  className={`chip ${on ? "text-white shadow-lg" : "chip-idle"}`}
                   style={on ? { backgroundColor: theme.accent } : undefined}
                 >
                   <CategoryIcon name={c.icon} className="h-4 w-4" />
@@ -124,25 +151,52 @@ function ServiceBrowser({ initialCategory }) {
         </div>
       </div>
 
-      {isLoading && <PageLoader />}
-      <ErrorMessage error={error || catError} />
+      <ErrorMessage error={error || categories.error} onRetry={() => { refetch(); categories.refetch(); }} className="mb-4" />
 
-      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {byCategory.map((s) => (
-          <ServiceCard key={s.id} service={s} theme={categoryTheme(s.categorySlug)} />
-        ))}
-      </ul>
+      {isLoading ? (
+        <SkeletonList count={6} itemClassName="h-40" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" />
+      ) : services && visible.length === 0 ? (
+        <EmptyState
+          title={query.trim() ? `No services match “${query.trim()}”` : "No services here yet"}
+          body={
+            elsewhere > 0
+              ? `${plural(elsewhere, "match", "matches")} in other categories.`
+              : "Try a different word, or post a request describing the job and providers nearby will see it."
+          }
+          action={
+            <>
+              {elsewhere > 0 && <Button onClick={() => setParam("category", "")}>Search all categories</Button>}
+              {query && <Button variant="secondary" onClick={() => setParam("q", "")}>Clear search</Button>}
+              {elsewhere === 0 && <Button to="/request-service">Post a request</Button>}
+            </>
+          }
+        />
+      ) : (
+        <>
+          <p className="mb-3 text-sm text-slate-600" aria-live="polite">
+            {plural(visible.length, "service")}
+            {query.trim() && ` matching “${query.trim()}”`}
+            {elsewhere > 0 && (
+              <>
+                {" · "}
+                <button type="button" onClick={() => setParam("category", "")} className="font-semibold text-brand-700 hover:text-brand-800">
+                  {elsewhere} more in other categories
+                </button>
+              </>
+            )}
+          </p>
+          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {visible.map((s) => (
+              <ServiceCard key={s.id} service={s} theme={categoryTheme(s.categorySlug)} />
+            ))}
+          </ul>
+        </>
+      )}
     </>
   );
 }
 
-ServiceBrowser.propTypes = { initialCategory: PropTypes.string };
-
-export function Services() {
-  return <ServiceBrowser />;
-}
-
 export function CategoryServices() {
   const { categorySlug } = useParams();
-  return <ServiceBrowser key={categorySlug} initialCategory={categorySlug} />;
+  return <Navigate to={`/services?category=${encodeURIComponent(categorySlug)}`} replace />;
 }

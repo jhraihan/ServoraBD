@@ -1,4 +1,5 @@
 import PropTypes from "prop-types";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import {
@@ -49,11 +50,15 @@ Stars.propTypes = {
   size: PropTypes.oneOf(["sm", "md"]),
 };
 
+const RATING_WORDS = ["", "Poor", "Fair", "Good", "Very good", "Excellent"];
+
 export function StarInput({ value, onChange, label, name }) {
+  const [hover, setHover] = useState(0);
+  const shown = hover || value;
   return (
     <fieldset>
       <legend className="label">{label}</legend>
-      <div className="flex gap-1" role="radiogroup" aria-label={label}>
+      <div className="flex items-center gap-1" role="radiogroup" aria-label={label} onMouseLeave={() => setHover(0)}>
         {[1, 2, 3, 4, 5].map((n) => (
           <button
             key={n}
@@ -61,15 +66,22 @@ export function StarInput({ value, onChange, label, name }) {
             role="radio"
             aria-checked={value === n}
             aria-label={`${n} star${n > 1 ? "s" : ""}`}
+            title={RATING_WORDS[n]}
             data-testid={`${name}-${n}`}
-            onClick={() => onChange(n)}
-            className="rounded-lg p-1 hover:bg-amber-50"
+            onClick={() => onChange(value === n ? 0 : n)}
+            onMouseEnter={() => setHover(n)}
+            onFocus={() => setHover(n)}
+            onBlur={() => setHover(0)}
+            className="rounded-lg p-1 transition hover:bg-amber-50 motion-safe:hover:scale-110"
           >
-            <svg viewBox="0 0 20 20" fill="currentColor" className={`h-8 w-8 ${n <= value ? "text-amber-400" : "text-slate-200"}`} aria-hidden="true">
+            <svg viewBox="0 0 20 20" fill="currentColor" className={`h-8 w-8 transition-colors ${n <= shown ? (hover && n > value ? "text-amber-300" : "text-amber-400") : "text-slate-200"}`} aria-hidden="true">
               <path d="M9.05 2.93c.3-.92 1.6-.92 1.9 0l1.4 4.3h4.5c.97 0 1.37 1.24.59 1.81l-3.64 2.64 1.39 4.28c.3.93-.76 1.7-1.54 1.13L10 14.45l-3.64 2.64c-.79.57-1.84-.2-1.54-1.13l1.39-4.28-3.64-2.64c-.78-.57-.38-1.81.59-1.81h4.5l1.4-4.3z" />
             </svg>
           </button>
         ))}
+        <span aria-hidden="true" className="ml-2 min-w-[5.5rem] text-sm font-semibold text-slate-700">
+          {RATING_WORDS[shown]}
+        </span>
       </div>
     </fieldset>
   );

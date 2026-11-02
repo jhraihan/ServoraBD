@@ -1,9 +1,12 @@
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
-import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
+import {
+  Link, NavLink, Navigate, Outlet, useLocation, useNavigate, useNavigationType,
+} from "react-router-dom";
 
 import ServiceSearch from "./ServiceSearch";
-import { ROLE } from "../constants/domain";
+import { Toaster } from "./ui";
+import { COMPARE_LIMIT, ROLE } from "../constants/domain";
 import { useSession } from "../hooks/useSession";
 import { useCompareStore } from "../store/compare";
 
@@ -36,15 +39,29 @@ function navClass({ isActive }) {
 export default function Layout() {
   const { user, isAuthenticated, isProvider, logout, switchRole } = useSession();
   const compareCount = useCompareStore((s) => s.ids.length);
+  const clearCompare = useCompareStore((s) => s.clear);
   const [open, setOpen] = useState(false);
   const location = useLocation();
+  const navigationType = useNavigationType();
   const navigate = useNavigate();
 
   useEffect(() => {
     setOpen(false);
-  }, [location.pathname]);
+    if (navigationType !== "POP") window.scrollTo(0, 0);
+  }, [location.pathname, navigationType]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function onKey(event) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
 
   const isHome = location.pathname === "/";
+  const hasOwnSearch = isHome || location.pathname.startsWith("/services");
+  const showCompareTray = !isProvider && compareCount > 0 && location.pathname.startsWith("/providers");
   const links = !isAuthenticated ? GUEST_LINKS : isProvider ? PROVIDER_LINKS : CUSTOMER_LINKS;
   const otherRole = isProvider ? ROLE.CUSTOMER : ROLE.PROVIDER;
   const canSwitch = user?.roles?.includes(otherRole);
@@ -153,7 +170,7 @@ export default function Layout() {
         )}
       </header>
 
-      {!isProvider && !isHome && (
+      {!isProvider && !hasOwnSearch && (
         <div className="sticky top-16 z-20 border-b border-white/50 bg-white/55 px-4 py-3 backdrop-blur-2xl backdrop-saturate-150 lg:hidden">
           <div className="mx-auto max-w-6xl">
             <ServiceSearch />
@@ -165,6 +182,14 @@ export default function Layout() {
         <Outlet />
       </main>
 
+      {showCompareTray && (
+        <>
+          <div aria-hidden="true" className="h-20" />
+          <CompareTray count={compareCount} onClear={clearCompare} />
+        </>
+      )}
+      <Toaster />
+
       <footer className="border-t border-white/50 bg-white/50 backdrop-blur-2xl">
         <div className="mx-auto max-w-6xl px-4 py-6 text-xs text-slate-600">
           ServoraBd · Verified local services in Dhaka · Trust scores are computed from recorded jobs, not self-reported.
@@ -173,6 +198,32 @@ export default function Layout() {
     </div>
   );
 }
+
+function CompareTray({ count, onClear }) {
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-4 z-40 flex justify-center px-4">
+      <section
+        aria-label="Comparison"
+        className="on-dark pointer-events-auto flex items-center gap-2 rounded-full bg-ink py-2 pr-2 pl-5 text-sm text-white shadow-2xl motion-safe:animate-rise-in"
+      >
+        <span className="font-medium whitespace-nowrap">
+          {count} of {COMPARE_LIMIT} picked
+        </span>
+        <button type="button" onClick={onClear} className="rounded-full px-3 py-2 text-white/80 hover:bg-white/10 hover:text-white">
+          Clear
+        </button>
+        <Link to="/compare" className="rounded-full bg-white px-4 py-2 font-semibold whitespace-nowrap text-ink hover:bg-brand-50">
+          Compare now
+        </Link>
+      </section>
+    </div>
+  );
+}
+
+CompareTray.propTypes = {
+  count: PropTypes.number.isRequired,
+  onClear: PropTypes.func.isRequired,
+};
 
 function AccountActions({ isAuthenticated, name, canSwitch, otherRole, onSwitch, onLogout }) {
   if (!isAuthenticated) {

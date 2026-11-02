@@ -76,6 +76,17 @@ export function toDateInputValue(date) {
   return parts;
 }
 
+const clockFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: DHAKA,
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+export function toTimeInputValue(date) {
+  return clockFormatter.format(date);
+}
+
 export function dhakaLocalToIso(dateValue, timeValue) {
   return new Date(`${dateValue}T${timeValue}:00+06:00`).toISOString();
 }

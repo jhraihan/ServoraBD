@@ -6,8 +6,9 @@ import { Link, useNavigate } from "react-router-dom";
 import { me, requests } from "../../api/endpoints";
 import { Money } from "../../components/domain";
 import { TrustBadge } from "../../components/Trust";
-import { Button, EmptyState, ErrorMessage, PageHeader, PageLoader, Stat } from "../../components/ui";
+import { Button, EmptyState, ErrorMessage, PageHeader, PageLoader, SkeletonList, Spinner, Stat } from "../../components/ui";
 import { formatDateTime, plural } from "../../lib/format";
+import { toast } from "../../store/toast";
 
 export default function Dashboard() {
   const queryClient = useQueryClient();
@@ -15,11 +16,15 @@ export default function Dashboard() {
   const inbox = useQuery({ queryKey: ["provider-inbox"], queryFn: me.inbox, refetchInterval: 30000 });
   const toggle = useMutation({
     mutationFn: (accepting) => me.setAcceptingWork(accepting),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["provider-dashboard"] }),
+    onSuccess: (_data, accepting) => {
+      queryClient.invalidateQueries({ queryKey: ["provider-dashboard"] });
+      toast(accepting ? "You are taking new jobs again." : "Paused. You will not get new requests.");
+    },
+    onError: (err) => toast(err.message, "bad"),
   });
 
   if (dashboard.isLoading) return <PageLoader />;
-  if (dashboard.error) return <ErrorMessage error={dashboard.error} />;
+  if (dashboard.error) return <ErrorMessage error={dashboard.error} onRetry={dashboard.refetch} />;
 
   const d = dashboard.data;
 
@@ -28,7 +33,8 @@ export default function Dashboard() {
       <PageHeader
         title="Dashboard"
         action={
-          <label className="flex cursor-pointer items-center gap-3 rounded-2xl bg-white px-4 py-2 ring-1 ring-slate-200">
+          <label className={`flex cursor-pointer items-center gap-3 rounded-2xl px-4 py-2 ring-1 transition has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-brand-700 ${d.isAcceptingWork ? "bg-emerald-50 ring-emerald-200" : "bg-white ring-slate-200"}`}>
+            <span className={`h-2.5 w-2.5 rounded-full ${d.isAcceptingWork ? "bg-emerald-500" : "bg-slate-400"}`} aria-hidden="true" />
             <span className="text-sm font-medium text-slate-700">Taking new jobs</span>
             <input
               type="checkbox"
@@ -62,11 +68,24 @@ export default function Dashboard() {
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
         <section aria-labelledby="inbox-heading">
-          <h2 id="inbox-heading" className="section-title mb-3">New requests</h2>
-          <ErrorMessage error={inbox.error} />
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h2 id="inbox-heading" className="section-title">
+              New requests{inbox.data?.length ? ` (${inbox.data.length})` : ""}
+            </h2>
+            <button
+              type="button"
+              onClick={() => inbox.refetch()}
+              disabled={inbox.isFetching}
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-brand-700 hover:bg-brand-50 disabled:text-slate-600"
+            >
+              {inbox.isFetching && <Spinner small label="Checking for requests" />}
+              {inbox.isFetching ? "Checking…" : "Refresh"}
+            </button>
+          </div>
+          <ErrorMessage error={inbox.error} onRetry={inbox.refetch} className="mb-3" />
           {inbox.isLoading ? (
-            <PageLoader />
-          ) : inbox.data.length === 0 ? (
+            <SkeletonList count={2} itemClassName="h-40" />
+          ) : !inbox.data ? null : inbox.data.length === 0 ? (
             <EmptyState
               title="No open requests right now"
               body={d.isAcceptingWork ? "New requests in your areas appear here. Replying quickly improves your trust score." : "You are paused. Turn on “Taking new jobs” to receive requests."}
@@ -113,9 +132,10 @@ function InboxItem({ request }) {
 
   const respond = useMutation({
     mutationFn: (accept) => requests.respond(request.id, { accept, reason }),
-    onSuccess: (booking) => {
+    onSuccess: (booking, accept) => {
       queryClient.invalidateQueries({ queryKey: ["provider-inbox"] });
       queryClient.invalidateQueries({ queryKey: ["provider-dashboard"] });
+      toast(accept ? "Job accepted. The address is now visible." : "Request declined.");
       if (booking) navigate(`/provider/bookings/${booking.id}`);
     },
     onError: () => queryClient.invalidateQueries({ queryKey: ["provider-inbox"] }),
@@ -136,7 +156,7 @@ function InboxItem({ request }) {
       {declining ? (
         <div className="mt-3 space-y-2">
           <label htmlFor={`decline-${request.id}`} className="label">Reason (optional)</label>
-          <input id={`decline-${request.id}`} className="input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Fully booked that day" />
+          <input id={`decline-${request.id}`} className="input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Fully booked that day" autoFocus />
           <div className="flex gap-2">
             <Button variant="danger" size="sm" loading={respond.isPending} onClick={() => respond.mutate(false)}>Decline</Button>
             <Button variant="ghost" size="sm" onClick={() => setDeclining(false)}>Back</Button>

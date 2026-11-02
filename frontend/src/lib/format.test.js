@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   dhakaLocalToIso, formatDuration, formatMoney, formatPercent, formatPeriod, formatTime, plural,
+  toTimeInputValue,
 } from "./format";
 
 describe("formatMoney", () => {
@@ -67,6 +68,13 @@ describe("plural", () => {
     expect(plural(1, "job")).toBe("1 job");
     expect(plural(0, "job")).toBe("0 jobs");
     expect(plural(2, "completed job")).toBe("2 completed jobs");
+  });
+});
+
+describe("toTimeInputValue", () => {
+  it("reads the wall clock in Dhaka on a 24-hour clock", () => {
+    expect(toTimeInputValue(new Date("2026-09-01T03:05:00Z"))).toBe("09:05");
+    expect(toTimeInputValue(new Date("2026-09-01T18:30:00Z"))).toBe("00:30");
   });
 });
 

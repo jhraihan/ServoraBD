@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 
 import CategoryIcon from "../components/CategoryIcon";
 import ServiceSearch from "../components/ServiceSearch";
-import { ErrorMessage, PageLoader } from "../components/ui";
+import { ErrorMessage, SkeletonList } from "../components/ui";
 import { categoryTheme } from "../constants/categories";
 import { useAllServices, useCategories } from "../hooks/useCatalogue";
 import { toDateInputValue } from "../lib/format";
@@ -30,7 +30,7 @@ const PROMISES = [
 ];
 
 export default function Home() {
-  const { data: categories, isLoading, error } = useCategories();
+  const { data: categories, isLoading, error, refetch } = useCategories();
   const { data: services } = useAllServices();
 
   return (
@@ -90,11 +90,11 @@ export default function Home() {
         <div className="mb-4 flex items-end justify-between gap-4">
           <h2 id="categories-heading" className="section-title">Browse by category</h2>
           <Link to="/services" className="text-sm font-semibold text-brand-700">
-            All {services?.length ?? 45} services
+            {services ? `All ${services.length} services →` : "All services →"}
           </Link>
         </div>
-        {isLoading && <PageLoader />}
-        <ErrorMessage error={error} />
+        {isLoading && <SkeletonList count={8} itemClassName="h-32" className="grid grid-cols-2 gap-3 sm:grid-cols-4" />}
+        <ErrorMessage error={error} onRetry={refetch} />
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {(categories ?? []).map((c) => {
             const theme = categoryTheme(c.slug);

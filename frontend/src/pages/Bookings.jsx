@@ -9,28 +9,42 @@ import {
 } from "../components/domain";
 import { bookingShape } from "../components/propShapes";
 import {
-  Badge, Button, EmptyState, ErrorMessage, Field, PageHeader, PageLoader,
+  Badge, Button, ConfirmAction, EmptyState, ErrorMessage, Field, PageHeader, PageLoader, SkeletonList,
 } from "../components/ui";
 import {
   BOOKING_STATE, BOOKING_STATE_LABEL, CANCELLABLE_STATES, REQUEST_STATE,
 } from "../constants/domain";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useSession } from "../hooks/useSession";
-import { formatDateTime } from "../lib/format";
+import { formatDateTime, formatMoney } from "../lib/format";
+import { toast } from "../store/toast";
 
 const TABS = [
   { key: "", label: "All" },
   { key: BOOKING_STATE.SCHEDULED, label: "Upcoming" },
+  { key: BOOKING_STATE.IN_PROGRESS, label: "In progress" },
   { key: BOOKING_STATE.AWAITING_CONFIRM, label: "To confirm" },
   { key: BOOKING_STATE.COMPLETED, label: "Completed" },
+  { key: BOOKING_STATE.DISPUTED, label: "Disputed" },
 ];
+
+const CANCELLED_BY_LABEL = {
+  customer: "the customer",
+  provider: "the provider",
+  admin: "ServoraBd support",
+  system: "the system",
+};
 
 export function MyRequests() {
   const queryClient = useQueryClient();
   const location = useLocation();
-  const { data, isLoading, error } = useQuery({ queryKey: ["my-requests"], queryFn: () => requests.list() });
+  const { data, isLoading, error, refetch } = useQuery({ queryKey: ["my-requests"], queryFn: () => requests.list() });
   const withdraw = useMutation({
     mutationFn: requests.withdraw,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["my-requests"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["my-requests"] });
+      toast("Request withdrawn. Providers will no longer see it.");
+    },
   });
 
   return (
@@ -41,10 +55,11 @@ export function MyRequests() {
           Request sent. Matching providers have been notified — you will see a booking here as soon as one accepts.
         </div>
       )}
-      <ErrorMessage error={error || withdraw.error} />
+      <ErrorMessage error={error} onRetry={refetch} className="mb-4" />
+      <ErrorMessage error={withdraw.error} className="mb-4" />
       {isLoading ? (
-        <PageLoader />
-      ) : data.length === 0 ? (
+        <SkeletonList count={3} itemClassName="h-36" />
+      ) : !data ? null : data.length === 0 ? (
         <EmptyState title="No requests yet" body="Tell us what needs fixing and local providers will respond." action={<Button to="/request-service">Request a service</Button>} />
       ) : (
         <ul className="space-y-3">
@@ -64,9 +79,18 @@ export function MyRequests() {
                   {r.state === REQUEST_STATE.OPEN && ` · expires ${formatDateTime(r.expiresAt)}`}
                 </span>
                 {r.state === REQUEST_STATE.OPEN && (
-                  <Button variant="ghost" size="sm" loading={withdraw.isPending && withdraw.variables === r.id} onClick={() => withdraw.mutate(r.id)}>
-                    Withdraw
-                  </Button>
+                  <ConfirmAction
+                    label="Withdraw"
+                    prompt="Withdraw this request?"
+                    confirmLabel="Yes, withdraw"
+                    loading={withdraw.isPending && withdraw.variables === r.id}
+                    onConfirm={() => withdraw.mutate(r.id)}
+                  />
+                )}
+                {[REQUEST_STATE.WITHDRAWN, REQUEST_STATE.EXPIRED].includes(r.state) && (
+                  <Link to={`/request-service?service=${r.serviceId}`} className="font-semibold text-brand-700 hover:text-brand-800">
+                    Request again →
+                  </Link>
                 )}
                 {r.state === REQUEST_STATE.ACCEPTED && (
                   <Link to="/my-bookings" className="font-semibold text-brand-700">View booking →</Link>
@@ -81,17 +105,19 @@ export function MyRequests() {
 }
 
 export function BookingList({ basePath, title, subtitle }) {
+  const { isProvider } = useSession();
   const [params, setParams] = useSearchParams();
   const state = params.get("state") ?? "";
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["bookings", state],
     queryFn: () => bookings.list({ state, page_size: 50 }),
   });
+  const tab = TABS.find((t) => t.key === state);
 
   return (
     <>
       <PageHeader title={title} subtitle={subtitle} />
-      <div className="mb-4 flex gap-2 overflow-x-auto pb-1" role="tablist">
+      <div className="-mx-4 mb-4 flex gap-2 overflow-x-auto px-4 pb-1" role="tablist">
         {TABS.map((t) => (
           <button
             key={t.key}
@@ -105,19 +131,40 @@ export function BookingList({ basePath, title, subtitle }) {
           </button>
         ))}
       </div>
-      <ErrorMessage error={error} />
+      <ErrorMessage error={error} onRetry={refetch} className="mb-4" />
       {isLoading ? (
-        <PageLoader />
-      ) : data.results.length === 0 ? (
-        <EmptyState title="Nothing here yet" body="Bookings appear once a provider accepts a request." />
+        <SkeletonList count={3} itemClassName="h-24" />
+      ) : !data ? null : data.results.length === 0 ? (
+        state ? (
+          <EmptyState
+            title={`No ${tab?.label.toLowerCase() ?? "matching"} ${isProvider ? "jobs" : "bookings"}`}
+            body="Nothing is in this state right now."
+            action={<Button variant="secondary" onClick={() => setParams({})}>Show all</Button>}
+          />
+        ) : isProvider ? (
+          <EmptyState
+            title="No jobs yet"
+            body="Jobs appear here once you accept a request from your dashboard."
+            action={<Button to="/provider/dashboard">Go to dashboard</Button>}
+          />
+        ) : (
+          <EmptyState
+            title="No bookings yet"
+            body="Bookings appear once a provider accepts a request."
+            action={<Button to="/services">Find a service</Button>}
+          />
+        )
       ) : (
         <ul className="space-y-3">
           {data.results.map((b) => (
             <li key={b.id}>
-              <Link to={`${basePath}/${b.id}`} className="card flex items-center justify-between gap-3 p-5 hover:border-brand-300" data-testid="booking-row">
-                <div>
-                  <p className="font-semibold text-ink">{b.service?.name}</p>
-                  <p className="text-sm text-slate-600">{b.providerName} · {formatDateTime(b.scheduledFor)}</p>
+              <Link to={`${basePath}/${b.id}`} className="card group flex items-center justify-between gap-3 p-5 transition hover:-translate-y-0.5 hover:border-brand-300" data-testid="booking-row">
+                <div className="min-w-0">
+                  <p className="font-semibold text-ink group-hover:text-brand-800">{b.service?.name}</p>
+                  <p className="text-sm text-slate-600">{isProvider ? `Booking #${b.id}` : b.providerName} · {formatDateTime(b.scheduledFor)}</p>
+                  {b.state === BOOKING_STATE.AWAITING_CONFIRM && !isProvider && (
+                    <p className="mt-1 text-xs font-semibold text-amber-800">Needs your confirmation</p>
+                  )}
                 </div>
                 <div className="text-right">
                   <BookingStateBadge state={b.state} />
@@ -142,25 +189,33 @@ export function BookingDetail() {
   const { id } = useParams();
   const { isProvider } = useSession();
   const queryClient = useQueryClient();
-  const { data: booking, isLoading, error } = useQuery({
+  const { data: booking, isLoading, error, refetch } = useQuery({
     queryKey: ["booking", id],
     queryFn: () => bookings.detail(id),
   });
+  const listPath = isProvider ? "/provider/bookings" : "/my-bookings";
+  useDocumentTitle(booking?.service?.name ?? "Booking");
 
-  function refresh() {
+  function refresh(message) {
     queryClient.invalidateQueries({ queryKey: ["booking", id] });
     queryClient.invalidateQueries({ queryKey: ["bookings"] });
     queryClient.invalidateQueries({ queryKey: ["provider-dashboard"] });
+    if (message) toast(message);
   }
 
   if (isLoading) return <PageLoader />;
-  if (error) return <ErrorMessage error={error} />;
-
-  const listPath = isProvider ? "/provider/bookings" : "/my-bookings";
+  if (error) {
+    return (
+      <div className="mx-auto max-w-md space-y-4">
+        <ErrorMessage error={error} onRetry={refetch} />
+        <Link to={listPath} className="block text-center text-sm font-semibold text-brand-700">← All bookings</Link>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
-      <Link to={listPath} className="text-sm font-semibold text-brand-700">← All bookings</Link>
+      <Link to={listPath} className="text-sm font-semibold text-brand-700 hover:text-brand-800">← All bookings</Link>
 
       <section className="card p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -189,6 +244,18 @@ export function BookingDetail() {
           <div>
             <dt className="text-slate-600">Address</dt>
             <dd className="whitespace-pre-line text-ink">{booking.address}</dd>
+            {isProvider && booking.address && (
+              <dd className="mt-1">
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(booking.address)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sm font-semibold text-brand-700 hover:text-brand-800"
+                >
+                  Open in Maps ↗
+                </a>
+              </dd>
+            )}
           </div>
           <div>
             <dt className="text-slate-600">Agreed price</dt>
@@ -204,7 +271,7 @@ export function BookingDetail() {
 
         {booking.cancelReason && (
           <p className="mt-4 rounded-2xl bg-slate-50 p-3 text-sm text-slate-700">
-            Cancelled by {booking.cancelledBy}: “{booking.cancelReason}”
+            Cancelled by {CANCELLED_BY_LABEL[booking.cancelledBy] ?? booking.cancelledBy ?? "someone"}: “{booking.cancelReason}”
           </p>
         )}
       </section>
@@ -219,7 +286,7 @@ export function BookingDetail() {
   );
 }
 
-function ReasonForm({ label, buttonLabel, variant = "danger", onSubmit, pending, error }) {
+function ReasonForm({ label, buttonLabel, variant = "danger", onSubmit, onCancel, cancelLabel = "Never mind", pending, error }) {
   const [reason, setReason] = useState("");
   const fieldId = `reason-${buttonLabel.replace(/\s+/g, "-").toLowerCase()}`;
   return (
@@ -231,10 +298,13 @@ function ReasonForm({ label, buttonLabel, variant = "danger", onSubmit, pending,
       }}
     >
       <Field label={label} htmlFor={fieldId}>
-        <textarea id={fieldId} className="input" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} required />
+        <textarea id={fieldId} className="input" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} required autoFocus />
       </Field>
       <ErrorMessage error={error} />
-      <Button type="submit" variant={variant} loading={pending} disabled={!reason.trim()}>{buttonLabel}</Button>
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" variant={variant} loading={pending} disabled={!reason.trim()}>{buttonLabel}</Button>
+        {onCancel && <Button variant="secondary" onClick={onCancel} disabled={pending}>{cancelLabel}</Button>}
+      </div>
     </form>
   );
 }
@@ -244,6 +314,8 @@ ReasonForm.propTypes = {
   buttonLabel: PropTypes.string.isRequired,
   variant: PropTypes.string,
   onSubmit: PropTypes.func.isRequired,
+  onCancel: PropTypes.func,
+  cancelLabel: PropTypes.string,
   pending: PropTypes.bool,
   error: PropTypes.instanceOf(Error),
 };
@@ -251,9 +323,20 @@ ReasonForm.propTypes = {
 function CustomerActions({ booking, onDone }) {
   const [amount, setAmount] = useState(booking.finalPrice ?? booking.agreedPrice ?? "");
   const [mode, setMode] = useState(null);
-  const confirm = useMutation({ mutationFn: () => bookings.confirm(booking.id, amount), onSuccess: onDone });
-  const cancel = useMutation({ mutationFn: (reason) => bookings.cancel(booking.id, reason), onSuccess: onDone });
-  const dispute = useMutation({ mutationFn: (reason) => bookings.dispute(booking.id, reason), onSuccess: onDone });
+  const confirm = useMutation({
+    mutationFn: () => bookings.confirm(booking.id, amount),
+    onSuccess: () => onDone("Thanks — payment confirmed."),
+  });
+  const cancel = useMutation({
+    mutationFn: (reason) => bookings.cancel(booking.id, reason),
+    onSuccess: () => onDone("Booking cancelled."),
+  });
+  const dispute = useMutation({
+    mutationFn: (reason) => bookings.dispute(booking.id, reason),
+    onSuccess: () => onDone("Dispute opened. Our team will be in touch."),
+  });
+  const recorded = booking.finalPrice ?? booking.agreedPrice;
+  const mismatch = amount !== "" && recorded != null && Number(amount) !== Number(recorded);
 
   if (booking.state === BOOKING_STATE.AWAITING_CONFIRM) {
     return (
@@ -266,13 +349,18 @@ function CustomerActions({ booking, onDone }) {
         <Field label="Amount you paid (৳)" htmlFor="confirm-amount">
           <input id="confirm-amount" type="number" min="0" step="1" inputMode="decimal" className="input" value={amount} onChange={(e) => setAmount(e.target.value)} />
         </Field>
+        {mismatch && (
+          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" aria-live="polite">
+            This differs from the {formatMoney(recorded)} {booking.providerName} recorded. If you confirm, our team will review the difference.
+          </p>
+        )}
         <ErrorMessage error={confirm.error} />
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => confirm.mutate()} loading={confirm.isPending} disabled={amount === ""}>Confirm and pay</Button>
-          <Button variant="ghost" onClick={() => setMode(mode === "dispute" ? null : "dispute")}>Something went wrong</Button>
+          <Button variant="ghost" onClick={() => setMode(mode === "dispute" ? null : "dispute")} aria-expanded={mode === "dispute"}>Something went wrong</Button>
         </div>
         {mode === "dispute" && (
-          <ReasonForm label="What went wrong?" buttonLabel="Open a dispute" onSubmit={dispute.mutate} pending={dispute.isPending} error={dispute.error} />
+          <ReasonForm label="What went wrong?" buttonLabel="Open a dispute" onSubmit={dispute.mutate} onCancel={() => setMode(null)} pending={dispute.isPending} error={dispute.error} />
         )}
       </section>
     );
@@ -299,7 +387,7 @@ function CustomerActions({ booking, onDone }) {
     return (
       <section className="card p-5">
         {mode === "cancel" ? (
-          <ReasonForm label="Why are you cancelling?" buttonLabel="Cancel booking" onSubmit={cancel.mutate} pending={cancel.isPending} error={cancel.error} />
+          <ReasonForm label="Why are you cancelling?" buttonLabel="Cancel booking" onSubmit={cancel.mutate} onCancel={() => setMode(null)} cancelLabel="Keep booking" pending={cancel.isPending} error={cancel.error} />
         ) : (
           <Button variant="secondary" onClick={() => setMode("cancel")}>Cancel booking</Button>
         )}
@@ -318,18 +406,27 @@ function ProviderActions({ booking, onDone }) {
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState("");
 
-  const start = useMutation({ mutationFn: () => bookings.start(booking.id), onSuccess: onDone });
-  const complete = useMutation({ mutationFn: () => bookings.complete(booking.id, finalPrice), onSuccess: onDone });
-  const cancel = useMutation({ mutationFn: (reason) => bookings.cancel(booking.id, reason), onSuccess: onDone });
+  const start = useMutation({
+    mutationFn: () => bookings.start(booking.id),
+    onSuccess: () => onDone("Job started. Good luck!"),
+  });
+  const complete = useMutation({
+    mutationFn: () => bookings.complete(booking.id, finalPrice),
+    onSuccess: () => onDone("Marked done. The customer will confirm the amount."),
+  });
+  const cancel = useMutation({
+    mutationFn: (reason) => bookings.cancel(booking.id, reason),
+    onSuccess: () => onDone("Job cancelled."),
+  });
   const rate = useMutation({
     mutationFn: () => me.rateCustomer({ bookingId: booking.id, rating, comment }),
-    onSuccess: onDone,
+    onSuccess: () => onDone("Rating sent."),
   });
 
   const cancelBlock = CANCELLABLE_STATES.includes(booking.state) && (
     <div className="border-t border-slate-100 pt-4">
       {cancelling ? (
-        <ReasonForm label="Why are you cancelling? This counts against your trust score." buttonLabel="Cancel job" onSubmit={cancel.mutate} pending={cancel.isPending} error={cancel.error} />
+        <ReasonForm label="Why are you cancelling? This counts against your trust score." buttonLabel="Cancel job" onSubmit={cancel.mutate} onCancel={() => setCancelling(false)} cancelLabel="Keep job" pending={cancel.isPending} error={cancel.error} />
       ) : (
         <Button variant="ghost" onClick={() => setCancelling(true)}>Cancel this job</Button>
       )}

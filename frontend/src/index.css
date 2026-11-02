@@ -20,6 +20,31 @@
 
   --radius-4xl: 2rem;
   --radius-5xl: 2.75rem;
+
+  --animate-toast-in: toast-in 0.2s ease-out;
+  --animate-rise-in: rise-in 0.25s ease-out;
+
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(-8px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
 }
 
 @layer base {
@@ -97,6 +122,18 @@
 
   .chip-active {
     @apply bg-ink text-white shadow-lg;
+  }
+
+  .choice {
+    @apply cursor-pointer rounded-2xl border transition has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-brand-700;
+  }
+
+  .choice-off {
+    @apply border-slate-300 text-slate-700 hover:border-brand-400 hover:bg-white/70;
+  }
+
+  .choice-on {
+    @apply border-brand-600 bg-brand-50 text-brand-800;
   }
 
   .fab {

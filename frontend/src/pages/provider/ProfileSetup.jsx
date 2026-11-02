@@ -4,9 +4,10 @@ import { useState } from "react";
 
 import { me } from "../../api/endpoints";
 import { Money } from "../../components/domain";
-import { Badge, Button, ErrorMessage, Field, PageHeader, PageLoader } from "../../components/ui";
+import { Badge, Button, ConfirmAction, ErrorMessage, Field, PageHeader, PageLoader } from "../../components/ui";
 import { PRICE_FLAG_LABEL, WEEKDAYS } from "../../constants/domain";
 import { flattenAreas, useAllServices, useLocationTree } from "../../hooks/useCatalogue";
+import { toast } from "../../store/toast";
 
 const DOCUMENT_TYPES = [
   ["nid_front", "NID — front"],
@@ -16,19 +17,20 @@ const DOCUMENT_TYPES = [
 ];
 
 const STATUS_TONE = { pending: "warn", approved: "good", rejected: "bad" };
+const STATUS_LABEL = { pending: "In review", approved: "Approved", rejected: "Rejected" };
 
 export default function ProfileSetup() {
   const profile = useQuery({ queryKey: ["my-profile"], queryFn: me.profile });
 
   if (profile.isLoading) return <PageLoader />;
-  if (profile.error) return <ErrorMessage error={profile.error} />;
+  if (profile.error) return <ErrorMessage error={profile.error} onRetry={profile.refetch} />;
 
   const p = profile.data;
   const checklist = [
-    ["Add at least one service", p.offerings.length > 0],
-    ["Choose the areas you serve", p.serviceAreas.length > 0],
-    ["Set your weekly hours", p.availability.length > 0],
-    ["Verify your identity", p.identityVerified],
+    ["Add at least one service", p.offerings.length > 0, "section-services"],
+    ["Choose the areas you serve", p.serviceAreas.length > 0, "section-areas"],
+    ["Set your weekly hours", p.availability.length > 0, "section-hours"],
+    ["Verify your identity", p.identityVerified, "section-verification"],
   ];
   const done = checklist.filter(([, ok]) => ok).length;
 
@@ -37,12 +39,24 @@ export default function ProfileSetup() {
       <PageHeader title="Your profile" subtitle="Customers only find you once services and areas are set." />
 
       <div className="card mb-6 p-5">
-        <p className="text-sm font-semibold text-ink">Profile setup · {done} of {checklist.length} done</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-semibold text-ink">Profile setup · {done} of {checklist.length} done</p>
+          {done === checklist.length && <Badge tone="good">Ready for customers</Badge>}
+        </div>
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100" aria-hidden="true">
+          <div className="h-full rounded-full bg-brand-600 transition-all duration-500" style={{ width: `${(done / checklist.length) * 100}%` }} />
+        </div>
         <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-          {checklist.map(([label, ok]) => (
-            <li key={label} className={`flex items-center gap-2 text-sm ${ok ? "text-emerald-700" : "text-slate-600"}`}>
-              <span aria-hidden="true">{ok ? "✓" : "○"}</span>
-              {label}
+          {checklist.map(([label, ok, target]) => (
+            <li key={label}>
+              <a
+                href={`#${target}`}
+                className={`flex items-center gap-2 rounded-lg px-2 py-1 text-sm hover:bg-white/70 ${ok ? "text-emerald-700" : "font-medium text-slate-700"}`}
+              >
+                <span aria-hidden="true">{ok ? "✓" : "○"}</span>
+                {label}
+                {!ok && <span className="ml-auto text-xs font-semibold text-brand-700">Do it →</span>}
+              </a>
             </li>
           ))}
         </ul>
@@ -77,7 +91,13 @@ function BasicInfo({ profile }) {
     bio: profile.bio,
     experienceYears: profile.experienceYears,
   });
-  const save = useMutation({ mutationFn: () => me.updateProfile(form), onSuccess: refresh });
+  const save = useMutation({
+    mutationFn: () => me.updateProfile(form),
+    onSuccess: () => {
+      refresh();
+      toast("Profile saved.");
+    },
+  });
 
   return (
     <section className="card p-5">
@@ -88,7 +108,7 @@ function BasicInfo({ profile }) {
             <input id="p-name" className="input" value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} required />
           </Field>
           <Field label="Years of experience" htmlFor="p-exp">
-            <input id="p-exp" type="number" min="0" max="70" className="input" value={form.experienceYears} onChange={(e) => setForm({ ...form, experienceYears: Number(e.target.value) })} />
+            <input id="p-exp" type="number" min="0" max="70" className="input" value={form.experienceYears} onChange={(e) => setForm({ ...form, experienceYears: e.target.value === "" ? "" : Number(e.target.value) })} />
           </Field>
         </div>
         <Field label="About your work" htmlFor="p-bio">
@@ -97,7 +117,6 @@ function BasicInfo({ profile }) {
         <ErrorMessage error={save.error} />
         <div className="flex items-center gap-3">
           <Button type="submit" loading={save.isPending}>Save</Button>
-          {save.isSuccess && <span className="text-sm text-emerald-700">Saved</span>}
         </div>
       </form>
     </section>
@@ -124,16 +143,30 @@ function Offerings({ offerings }) {
       setServiceId("");
       setPrice("");
       refresh();
+      toast("Service added.");
     },
   });
-  const toggle = useMutation({ mutationFn: (o) => me.updateOffering(o.id, { isActive: !o.isActive }), onSuccess: refresh });
-  const remove = useMutation({ mutationFn: (id) => me.removeOffering(id), onSuccess: refresh });
+  const toggle = useMutation({
+    mutationFn: (o) => me.updateOffering(o.id, { isActive: !o.isActive }),
+    onSuccess: (_data, o) => {
+      refresh();
+      toast(o.isActive ? "Service paused. Customers will not see it." : "Service is live again.");
+    },
+  });
+  const remove = useMutation({
+    mutationFn: (id) => me.removeOffering(id),
+    onSuccess: () => {
+      refresh();
+      toast("Service removed.");
+    },
+  });
 
   const offered = new Set(offerings.map((o) => o.serviceId));
   const chosen = (services ?? []).find((s) => String(s.id) === serviceId);
+  const outsideRange = chosen?.priceMin && chosen?.priceMax && price !== "" && (Number(price) < Number(chosen.priceMin) || Number(price) > Number(chosen.priceMax));
 
   return (
-    <section className="card p-5">
+    <section id="section-services" className="card scroll-mt-24 p-5">
       <h2 className="section-title">Services and prices</h2>
       <ul className="mt-3 divide-y divide-slate-100">
         {offerings.length === 0 && <li className="py-3 text-sm text-slate-600">No services yet.</li>}
@@ -145,8 +178,14 @@ function Offerings({ offerings }) {
             </div>
             <div className="flex items-center gap-2">
               <Money value={o.price} className="font-semibold text-ink" />
-              <Button variant="ghost" size="sm" onClick={() => toggle.mutate(o)}>{o.isActive ? "Pause" : "Resume"}</Button>
-              <Button variant="ghost" size="sm" onClick={() => remove.mutate(o.id)}>Remove</Button>
+              <Button variant="ghost" size="sm" loading={toggle.isPending && toggle.variables?.id === o.id} onClick={() => toggle.mutate(o)}>{o.isActive ? "Pause" : "Resume"}</Button>
+              <ConfirmAction
+                label="Remove"
+                prompt="Remove this service?"
+                confirmLabel="Yes, remove"
+                loading={remove.isPending && remove.variables === o.id}
+                onConfirm={() => remove.mutate(o.id)}
+              />
             </div>
           </li>
         ))}
@@ -165,6 +204,11 @@ function Offerings({ offerings }) {
         </Field>
         <Button type="submit" loading={add.isPending}>Add</Button>
       </form>
+      {outsideRange && (
+        <p className="mt-2 text-xs text-amber-800" aria-live="polite">
+          This is outside the typical range, so customers will see it flagged as {Number(price) > Number(chosen.priceMax) ? "above" : "below"} typical price.
+        </p>
+      )}
       <ErrorMessage error={add.error || toggle.error || remove.error} className="mt-3" />
     </section>
   );
@@ -176,8 +220,15 @@ function ServiceAreas({ selectedIds }) {
   const refresh = useProfileRefresh();
   const { data: tree } = useLocationTree();
   const [selected, setSelected] = useState(new Set(selectedIds));
-  const save = useMutation({ mutationFn: () => me.setServiceAreas([...selected]), onSuccess: refresh });
+  const save = useMutation({
+    mutationFn: () => me.setServiceAreas([...selected]),
+    onSuccess: () => {
+      refresh();
+      toast("Areas saved.");
+    },
+  });
   const rows = flattenAreas(tree).filter((r) => r.level === "thana");
+  const dirty = selected.size !== selectedIds.length || selectedIds.some((id) => !selected.has(id));
 
   function flip(id) {
     setSelected((prev) => {
@@ -189,21 +240,27 @@ function ServiceAreas({ selectedIds }) {
   }
 
   return (
-    <section className="card p-5">
-      <h2 className="section-title">Areas you serve</h2>
+    <section id="section-areas" className="card scroll-mt-24 p-5">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="section-title">Areas you serve</h2>
+        <span className="text-sm text-slate-600">{selected.size} selected</span>
+      </div>
       <p className="mt-1 text-sm text-slate-600">Choosing a thana covers every area inside it.</p>
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
         {rows.map((r) => (
-          <label key={r.id} className={`cursor-pointer rounded-2xl border px-3 py-2 text-sm ${selected.has(r.id) ? "border-brand-600 bg-brand-50 text-brand-800" : "border-slate-300 text-slate-700"}`}>
+          <label key={r.id} className={`choice flex items-center gap-2 px-3 py-2 text-sm ${selected.has(r.id) ? "choice-on" : "choice-off"}`}>
             <input type="checkbox" className="sr-only" checked={selected.has(r.id)} onChange={() => flip(r.id)} />
+            <span aria-hidden="true" className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] ${selected.has(r.id) ? "border-brand-600 bg-brand-600 text-white" : "border-slate-400"}`}>
+              {selected.has(r.id) && "✓"}
+            </span>
             {r.label}
           </label>
         ))}
       </div>
       <ErrorMessage error={save.error} className="mt-3" />
       <div className="mt-4 flex items-center gap-3">
-        <Button onClick={() => save.mutate()} loading={save.isPending}>Save areas</Button>
-        {save.isSuccess && <span className="text-sm text-emerald-700">Saved</span>}
+        <Button onClick={() => save.mutate()} loading={save.isPending} disabled={!dirty}>Save areas</Button>
+        {dirty && <span className="text-sm font-medium text-amber-800">Unsaved changes</span>}
       </div>
     </section>
   );
@@ -221,16 +278,33 @@ function WeeklyHours({ windows }) {
   );
   const save = useMutation({
     mutationFn: () => me.setAvailability(days.filter((d) => d.on)),
-    onSuccess: refresh,
+    onSuccess: () => {
+      refresh();
+      toast("Hours saved.");
+    },
   });
 
   function patch(weekday, fields) {
     setDays((all) => all.map((d) => (d.weekday === weekday ? { ...d, ...fields } : d)));
   }
 
+  const template = days.find((d) => d.on);
+  const invalid = days.filter((d) => d.on && d.endTime <= d.startTime);
+
+  function copyToAll() {
+    setDays((all) => all.map((d) => ({ ...d, on: true, startTime: template.startTime, endTime: template.endTime })));
+  }
+
   return (
-    <section className="card p-5">
-      <h2 className="section-title">Weekly hours</h2>
+    <section id="section-hours" className="card scroll-mt-24 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="section-title">Weekly hours</h2>
+        {template && (
+          <Button variant="ghost" size="sm" onClick={copyToAll}>
+            Use {WEEKDAYS[template.weekday]}&apos;s hours every day
+          </Button>
+        )}
+      </div>
       <ul className="mt-3 divide-y divide-slate-100">
         {days.map((d) => (
           <li key={d.weekday} className="flex flex-wrap items-center gap-3 py-2.5">
@@ -250,10 +324,14 @@ function WeeklyHours({ windows }) {
           </li>
         ))}
       </ul>
+      {invalid.length > 0 && (
+        <p className="mt-3 text-sm font-medium text-rose-700" role="alert">
+          End time must be after start time on {invalid.map((d) => WEEKDAYS[d.weekday]).join(", ")}.
+        </p>
+      )}
       <ErrorMessage error={save.error} className="mt-3" />
       <div className="mt-4 flex items-center gap-3">
-        <Button onClick={() => save.mutate()} loading={save.isPending}>Save hours</Button>
-        {save.isSuccess && <span className="text-sm text-emerald-700">Saved</span>}
+        <Button onClick={() => save.mutate()} loading={save.isPending} disabled={invalid.length > 0}>Save hours</Button>
       </div>
     </section>
   );
@@ -266,16 +344,20 @@ function Verification() {
   const docs = useQuery({ queryKey: ["my-verification"], queryFn: me.verification });
   const [documentType, setDocumentType] = useState("nid_front");
   const [file, setFile] = useState(null);
+  const [inputKey, setInputKey] = useState(0);
   const upload = useMutation({
     mutationFn: () => me.uploadVerification({ documentType, file }),
     onSuccess: () => {
       setFile(null);
+      setInputKey((k) => k + 1);
       queryClient.invalidateQueries({ queryKey: ["my-verification"] });
+      toast("Document uploaded. We will review it soon.");
     },
   });
+  const tooBig = file && file.size > 5 * 1024 * 1024;
 
   return (
-    <section className="card p-5">
+    <section id="section-verification" className="card scroll-mt-24 p-5">
       <h2 className="section-title">Verification</h2>
       <p className="mt-1 text-sm text-slate-600">
         Both sides of your NID verify your identity; a trade certificate verifies your skill. Documents are stored privately and deleted 90 days after review.
@@ -286,7 +368,7 @@ function Verification() {
             <span>{d.documentTypeLabel}</span>
             <span className="flex items-center gap-2">
               {d.rejectionReason && <span className="text-xs text-rose-700">{d.rejectionReason}</span>}
-              <Badge tone={STATUS_TONE[d.status]}>{d.status}</Badge>
+              <Badge tone={STATUS_TONE[d.status]}>{STATUS_LABEL[d.status] ?? d.status}</Badge>
             </span>
           </li>
         ))}
@@ -298,10 +380,15 @@ function Verification() {
           </select>
         </Field>
         <Field label="File (JPEG, PNG or PDF, max 5 MB)" htmlFor="v-file">
-          <input id="v-file" type="file" accept="image/jpeg,image/png,application/pdf" className="input py-2" onChange={(e) => setFile(e.target.files?.[0] ?? null)} required />
+          <input key={inputKey} id="v-file" type="file" accept="image/jpeg,image/png,application/pdf" className="input py-2" onChange={(e) => setFile(e.target.files?.[0] ?? null)} required />
         </Field>
-        <Button type="submit" loading={upload.isPending} disabled={!file}>Upload</Button>
+        <Button type="submit" loading={upload.isPending} disabled={!file || tooBig}>Upload</Button>
       </form>
+      {tooBig && (
+        <p className="mt-2 text-sm font-medium text-rose-700" role="alert">
+          That file is {(file.size / (1024 * 1024)).toFixed(1)} MB. Please choose one under 5 MB.
+        </p>
+      )}
       <ErrorMessage error={upload.error || docs.error} className="mt-3" />
     </section>
   );
