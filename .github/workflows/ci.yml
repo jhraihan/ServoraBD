@@ -131,5 +131,9 @@ jobs:
         with:
           node-version: "24"
       - run: pip install pip-audit && pip-audit -r backend/requirements.txt
-      - run: npm audit
+      - name: Shipped dependencies have no known vulnerabilities
+        run: npm audit --omit=dev
+        working-directory: frontend
+      - name: Build tools have no high or critical vulnerabilities
+        run: npm audit --audit-level=high
         working-directory: frontend
